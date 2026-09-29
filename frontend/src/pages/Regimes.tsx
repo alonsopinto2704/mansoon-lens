@@ -65,7 +65,7 @@ export default function RegimesPage() {
     <div className="page page-wide">
       <header className="ws-head">
         <div>
-          <span className="label">Weather regimes · {source === 'live' ? 'live NWP' : 'held-out season'}</span>
+          <span className="label">Weather regimes · {source === 'live' ? 'live NWP' : 'held-out season (synthetic)'}</span>
           <h1 className="ws-title">{date ? titleDate(date, !(source === 'live')) : 'Weather regimes'}</h1>
         </div>
         <SourceControls />
@@ -104,7 +104,8 @@ export default function RegimesPage() {
           <section className="section">
             <Reveal className="section-head">
               <div>
-                                <h2>Why regimes matter: the raw model errs differently in each</h2>
+                <h2>Raw model error by regime</h2>
+                <p>Scores are from the synthetic held-out season, at the ≥ 64.5 mm threshold.</p>
               </div>
             </Reveal>
             <div className="regime-grid">
@@ -123,7 +124,7 @@ export default function RegimesPage() {
                     <p className="muted">{regimeBlurb[name]}</p>
                     <dl className="regime-metrics">
                       <div><dt>Raw model bias</dt><dd className="num">{raw ? `${raw.bias > 0 ? '+' : ''}${fixed(raw.bias, 1)} mm` : '—'}</dd></div>
-                      <div><dt>RMSE raw → ours</dt><dd className="num">{raw && ours ? `${fixed(raw.rmse, 1)} → ${fixed(ours.rmse, 1)}` : '—'}</dd></div>
+                      <div><dt>RMSE, raw to corrected</dt><dd className="num">{raw && ours ? `${fixed(raw.rmse, 1)} to ${fixed(ours.rmse, 1)} mm` : '—'}</dd></div>
                       <div><dt>Recognised</dt><dd className="num">{metric ? pct(metric.recall) : '—'}</dd></div>
                     </dl>
                     <p className="regime-gate small">{gate ? gateReason(gate.reason) : ''}</p>
@@ -136,8 +137,8 @@ export default function RegimesPage() {
           <section className="section">
             <Reveal className="section-head">
               <div>
-                                <h2>Classifier check: how often each regime is recognised (held-out season)</h2>
-                <p>Each row is the true regime; the cells show where its district-days were classified. A strong diagonal means the right correction is chosen.</p>
+                <h2>Regime classifier accuracy</h2>
+                <p>Each row is the true regime; cells show where its district-days were classified. A strong diagonal means the right correction is chosen.</p>
               </div>
             </Reveal>
             <Reveal className="card confusion-card"><Confusion matrix={v.classifier.confusion_matrix} regimes={v.regimes} /></Reveal>

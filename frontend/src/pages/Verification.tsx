@@ -7,7 +7,7 @@ import { useResolvedTheme } from '../store';
 import { ChartCard, ChartTooltip, LegendRow, chartTheme } from '../components/charts';
 import { PerformanceDiagram } from '../components/PerformanceDiagram';
 import { Field } from '../components/Controls';
-import { CountUp, ErrorState, GateChip, LoadingBlock, PageHeader, Reveal, Section, Segmented } from '../components/ui';
+import { CountUp, ErrorState, GateChip, LoadingBlock, PageHeader, Section, Segmented } from '../components/ui';
 
 const MODELS = ['Raw', 'Global', 'Regime-aware', 'Delivered'] as const;
 const modelLabel = { Raw: 'Raw model', Global: 'Global fix', 'Regime-aware': 'Correction before gate', Delivered: 'Delivered forecast' };
@@ -53,16 +53,19 @@ export default function VerificationPage() {
   const groups = ['Overall', ...v.regimes, ...[1, 2, 3, 4, 5].map((n) => `Lead ${n}`)];
   const rmseGain = raw.rmse ? (raw.rmse - ours.rmse) / raw.rmse : 0;
 
+  const summary = `Delivered forecast, ${group}, ≥ ${threshold} mm: RMSE ${mm(ours.rmse)} against ${mm(raw.rmse)} for the raw model${rmseGain > 0 ? ` (${pct(rmseGain)} lower)` : ''}; CSI ${fixed(ours.csi, 3)} against ${fixed(raw.csi, 3)} raw.`;
+
   return (
     <div className="page">
-      <PageHeader eyebrow="Held-out 2025 season (synthetic)" title="Verification: how much better, and where"
-        description="Raw rainfall, a global correction, the correction before gating and the delivered forecast, compared on the synthetic 2025 season. Headline scores describe the delivered forecast."
+      <PageHeader title="Verification"
+        description="Raw rainfall, a global correction, the correction before gating and the delivered forecast, compared on the synthetic held-out 2025 season."
         actions={<>
           <a className="btn btn-secondary" href="/api/v1/verification/report.csv"><Download size={16} aria-hidden /> CSV</a>
           <a className="btn btn-secondary" href="/api/v1/verification/report.pdf"><Download size={16} aria-hidden /> PDF report</a>
         </>} />
 
       <p className="source-note">{v.delivered_evaluation}</p>
+      <p className="verif-summary" aria-live="polite">{summary}</p>
       <div className="filter-bar">
         <Field label="Subset">
           <select className="input" value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Subset">
@@ -78,10 +81,10 @@ export default function VerificationPage() {
       </div>
 
       <div className="kpis">
-        <Reveal className="kpi card"><span>Forecasts scored</span><strong><CountUp value={v.subset_rows?.[group] ?? v.test_rows} /></strong><small>{group} · synthetic season</small></Reveal>
-        <Reveal className="kpi card" delay={0.05}><span>Error (RMSE)</span><strong><CountUp value={ours.rmse} format={(n) => mm(n)} /></strong><small>{rmseGain > 0 ? `${pct(rmseGain)} lower than raw` : `raw: ${mm(raw.rmse)}`}</small></Reveal>
-        <Reveal className="kpi card" delay={0.1}><span>Critical success index</span><strong><CountUp value={ours.csi ?? 0} format={(n) => n.toFixed(3)} /></strong><small>raw: {fixed(raw.csi, 3)} · higher is better</small></Reveal>
-        <Reveal className="kpi card" delay={0.15}><span>Heavy-rain events</span><strong><CountUp value={ours.hits + ours.misses} /></strong><small>in this subset</small></Reveal>
+        <div className="kpi card"><span>Forecasts scored</span><strong><CountUp value={v.subset_rows?.[group] ?? v.test_rows} /></strong><small>{group}</small></div>
+        <div className="kpi card"><span>Error (RMSE)</span><strong><CountUp value={ours.rmse} format={(n) => mm(n)} /></strong><small>{rmseGain > 0 ? `${pct(rmseGain)} lower than raw` : `raw: ${mm(raw.rmse)}`}</small></div>
+        <div className="kpi card"><span>Critical success index</span><strong><CountUp value={ours.csi ?? 0} format={(n) => n.toFixed(3)} /></strong><small>raw: {fixed(raw.csi, 3)} · higher is better</small></div>
+        <div className="kpi card"><span>Heavy-rain events</span><strong><CountUp value={ours.hits + ours.misses} /></strong><small>in this subset</small></div>
       </div>
 
       <div className="grid-2">
@@ -109,8 +112,8 @@ export default function VerificationPage() {
 
       <div className="grid-2">
         {(['rmse', 'csi'] as const).map((metric) => (
-          <ChartCard key={metric} title={metric === 'rmse' ? 'Rainfall error by lead day' : `Heavy-rain skill by lead day`}
-            description={metric === 'rmse' ? 'Overall · all regimes · RMSE (mm), lower is better' : `Overall · all regimes · CSI at ≥ ${threshold} mm, higher is better`} legend={legend}>
+          <ChartCard key={metric} title={metric === 'rmse' ? 'Rainfall error by lead day' : 'Heavy-rain skill by lead day'}
+            description={metric === 'rmse' ? 'Overall · RMSE (mm), lower is better' : `Overall · CSI at ≥ ${threshold} mm, higher is better`} legend={legend}>
             <ResponsiveContainer width="100%" height="100%" minHeight={260}>
               <LineChart data={byLead} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke={ct.grid} />
@@ -154,7 +157,7 @@ export default function VerificationPage() {
         </div>
       </div>
 
-      <Section title="The verification gate" description="Gate decisions below cover all regimes. A regime’s correction is served only if RMSE and heavy-rain CSI both improve on the raw and global baselines, with a positive lower 95% bootstrap bound.">
+      <Section title="The verification gate" description="Overall, by regime. A regime’s correction is served only if RMSE and heavy-rain CSI both improve on the raw and global baselines, with a positive lower 95% bootstrap bound.">
         <div className="card table-card">
           <div className="table-scroll">
             <table className="table">

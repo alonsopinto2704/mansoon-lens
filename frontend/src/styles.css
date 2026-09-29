@@ -228,8 +228,6 @@ select.input { padding-right: 32px; appearance: none; background-image: url("dat
 .btn-light:hover { background: var(--accent-hover); }
 .dropzone-file strong { overflow-wrap: anywhere; }
 .dropzone:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
-.feature-icon { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: var(--accent-soft); color: var(--accent-text); margin-bottom: 6px; }
-.feature-icon-lg { display: grid; width: 52px; height: 52px; border-radius: 14px; margin-bottom: 18px; }
 
 /* ---------- Forecast ---------- */
 .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; height: clamp(520px, calc(100vh - 300px), 880px); }
@@ -365,7 +363,7 @@ select.input { padding-right: 32px; appearance: none; background-image: url("dat
 .legend-row { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
 .legend-row span { display: inline-flex; align-items: center; gap: 6px; }
 .legend-row i.dashed { width: 14px; height: 0; border-top: 2px dashed; border-radius: 0; }
-.chart-tip { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 12px; font-size: 13px; display: grid; gap: 4px; min-width: 160px; }
+.chart-tip { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 12px; font-size: 13px; display: grid; gap: 4px; }
 .chart-tip strong { font-weight: 600; margin-bottom: 2px; }
 .chart-tip div { display: flex; align-items: center; gap: 7px; color: var(--text-2); }
 .chart-tip b { margin-left: auto; color: var(--text); font-weight: 500; padding-left: 12px; }
@@ -437,7 +435,7 @@ select.input { padding-right: 32px; appearance: none; background-image: url("dat
 .pipeline-detail p { color: var(--text-2); font-size: 16px; max-width: 620px; }
 .pipeline-nav { display: flex; gap: 8px; margin-top: 28px; }
 .decision { display: grid; gap: 8px; margin-top: 20px; max-width: 420px; }
-.decision-q { font-weight: 600; font-size: 14px; }
+.decision-q { font-size: 14px; }
 .decision-a { padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 550; }
 .decision-a.good { background: var(--good-soft); color: var(--good); }
 .decision-a.warn { background: var(--warn-soft); color: var(--warn-text); }
@@ -448,8 +446,7 @@ select.input { padding-right: 32px; appearance: none; background-image: url("dat
 .dropzone.is-drag { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone.has-file { border-style: solid; }
 .dropzone-empty { display: grid; justify-items: center; gap: 6px; text-align: center; }
-.dropzone-empty .btn { margin-top: 10px; cursor: pointer; }
-.dropzone-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--surface); color: var(--accent-text); box-shadow: var(--shadow); margin-bottom: 8px; }
+.dropzone-empty .btn { cursor: pointer; }
 .dropzone-file { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); color: var(--accent-text); width: min(100%, 420px); }
 .dropzone-file > div { flex: 1; min-width: 0; color: var(--text); }
 .dropzone-file strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -757,3 +754,9 @@ a.card:hover, button.card:hover, .regime-card:hover { box-shadow: none; }
 .state-card thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .state-table th[scope="row"] .link { font-weight: 600; text-align: left; }
 .state-table tr.is-active { background: var(--accent-soft); }
+
+/* Secondary pages (agent C) */
+.verif-summary { margin: 0 0 16px; font-size: 15px; line-height: 1.5; max-width: 80ch; color: var(--text); }
+.chart-tip { max-width: min(260px, 72vw); min-width: 0; }
+.decision-q { font-weight: 600; }
+.dropzone-empty .btn { margin-top: 8px; }

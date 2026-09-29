@@ -5,8 +5,8 @@ import type { Theme } from '../lib';
 export function chartTheme(theme: Theme) {
   const dark = theme === 'dark';
   return {
-    grid: dark ? '#223049' : '#e8ecf1',
-    axis: dark ? '#8391a7' : '#6b7686',
+    grid: dark ? '#2f3f58' : '#e8ecf1',
+    axis: dark ? '#9aa8bd' : '#5d6878',
     tick: { fontSize: 12, fill: dark ? '#aab6c8' : '#4a5566' },
   };
 }
@@ -34,7 +34,7 @@ export function ChartCard({ title, description, children, legend }: { title: str
         <div><h3>{title}</h3>{description && <p className="muted small">{description}</p>}</div>
         {legend}
       </div>
-      <div className="chart-body">{children}</div>
+      <div className="chart-body" role="group" aria-label={description ? `${title}. ${description}` : title}>{children}</div>
     </div>
   );
 }

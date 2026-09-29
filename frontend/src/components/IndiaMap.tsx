@@ -87,6 +87,7 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
   };
 
   return (
+    <div role="group" aria-label="Map of India districts. Use the district list to select a district with the keyboard." style={{ height }}>
     <MapContainer bounds={INDIA} maxBounds={[[0, 58], [42, 108]]} minZoom={4} maxZoom={10} zoomSnap={0.25} scrollWheelZoom={false}
       attributionControl={false} zoomControl={false} className="leaflet-map" style={{ height }} renderer={L.svg({ padding: 0.5 })}>
       <FitIndia compact={compact} />
@@ -98,5 +99,6 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
         <GeoJSON data={states.data as never} interactive={false} style={{ fill: false, color: 'var(--map-state)', weight: 1.1, opacity: 0.9 }} />
       </Pane>
     </MapContainer>
+    </div>
   );
 }

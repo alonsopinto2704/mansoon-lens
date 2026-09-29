@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AnimatePresence, m } from 'motion/react';
-import { BellRing, CheckCheck, Database, GitMerge, Layers, MapPinned, ShieldCheck } from 'lucide-react';
-import { PageHeader, Reveal, Section, ease } from '../components/ui';
+import { PageHeader, Section } from '../components/ui';
 
 const steps = [
-  { icon: Database, title: 'Inputs', text: 'District forecasts from a numerical weather model, observed rainfall, and geographic and atmospheric predictors — moisture, wind, pressure, terrain and distance to the coast.' },
-  { icon: CheckCheck, title: 'Align & quality-check', text: 'Forecasts and observations are matched by district and by the 08:30 IST rain day. Units, ranges and missing values are validated before anything is trained.' },
-  { icon: Layers, title: 'Detect the regime', text: 'A calibrated classifier assigns each district-day a probability for each of the six monsoon regimes. The probabilities always sum to one.' },
-  { icon: GitMerge, title: 'Blend the correction', text: 'Each regime has its own models for low (P10), best-estimate (conditional mean) and high (P90) rainfall, trained on every row weighted by that regime’s probability. They are blended using the regime probabilities, so transitions stay smooth.' },
-  { icon: BellRing, title: 'Estimate heavy-rain chances', text: 'Calibrated models that take the regime probabilities as inputs give the chance of crossing 64.5, 115.6 and 204.5 mm in 24 hours — the IMD heavy, very heavy and extremely heavy thresholds.' },
-  { icon: ShieldCheck, title: 'Pass the gate', text: 'On the held-out season, a regime’s correction must beat both the raw forecast and a single global correction (one raw-to-observed mapping per lead time) on RMSE and CSI, with a positive lower 95% bootstrap bound.' },
-  { icon: MapPinned, title: 'Serve the district product', text: 'Where the gate passed, the corrected value is served. Everywhere else the raw forecast is served, and the reason is shown alongside it.' },
+  { title: 'Inputs', text: 'District forecasts from a numerical weather model, observed rainfall, and geographic and atmospheric predictors — moisture, wind, pressure, terrain and distance to the coast.' },
+  { title: 'Align & quality-check', text: 'Forecasts and observations are matched by district and by the 08:30 IST rain day. Units, ranges and missing values are validated before anything is trained.' },
+  { title: 'Detect the regime', text: 'A calibrated classifier assigns each district-day a probability for each of the six monsoon regimes. The probabilities always sum to one.' },
+  { title: 'Blend the correction', text: 'Each regime has its own models for low (P10), best-estimate (conditional mean) and high (P90) rainfall, trained on every row weighted by that regime’s probability. They are blended using the regime probabilities, so transitions stay smooth.' },
+  { title: 'Estimate heavy-rain chances', text: 'Calibrated models that take the regime probabilities as inputs give the chance of crossing 64.5, 115.6 and 204.5 mm in 24 hours — the IMD heavy, very heavy and extremely heavy thresholds.' },
+  { title: 'Pass the gate', text: 'On the held-out season, a regime’s correction must beat both the raw forecast and a single global correction (one raw-to-observed mapping per lead time) on RMSE and CSI, with a positive lower 95% bootstrap bound.' },
+  { title: 'Serve the district product', text: 'Where the gate passed, the corrected value is served. Everywhere else the raw forecast is served, and the reason is shown alongside it.' },
 ];
 
 const details = [
@@ -38,17 +36,16 @@ const references = [
 export default function MethodPage() {
   const [active, setActive] = useState(0);
   const step = steps[active];
-  const Icon = step.icon;
   return (
     <div className="page">
-      <PageHeader title="Method: from raw model rain to a district forecast" description="Every number on this site traces back through seven steps. Select a step to see what happens there." />
+      <PageHeader title="Method" description="Seven steps from raw model rainfall to the district forecast. Select a step for detail." />
 
       <div className="pipeline">
         <ol className="pipeline-steps">
           {steps.map((s, i) => (
             <li key={s.title}>
               <button className={`pipeline-step ${i === active ? 'is-active' : ''}`} onClick={() => setActive(i)} aria-current={i === active ? 'step' : undefined}>
-                {i === active && <m.span layoutId="step-bg" className="pipeline-step-bg" transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
+                {i === active && <span className="pipeline-step-bg" />}
                 <span className="step-num num">{String(i + 1).padStart(2, '0')}</span>
                 <span className="step-title">{s.title}</span>
               </button>
@@ -56,33 +53,30 @@ export default function MethodPage() {
           ))}
         </ol>
         <div className="pipeline-detail card">
-          <AnimatePresence mode="wait">
-            <m.div key={active} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25, ease }}>
-              <span className="feature-icon feature-icon-lg"><Icon size={26} aria-hidden /></span>
-              <span className="muted small">Step {active + 1} of {steps.length}</span>
-              <h2>{step.title}</h2>
-              <p>{step.text}</p>
-              {active === 5 && (
-                <div className="decision">
-                  <div className="decision-q">Beats raw <em>and</em> global correction?</div>
-                  <div className="decision-a good">Yes → serve corrected rainfall</div>
-                  <div className="decision-a warn">No → serve raw, show the reason</div>
-                </div>
-              )}
-              <div className="pipeline-nav">
-                <button className="btn btn-secondary" disabled={active === 0} onClick={() => setActive(active - 1)}>Previous</button>
-                {active < steps.length - 1
-                  ? <button className="btn btn-primary" onClick={() => setActive(active + 1)}>Next step</button>
-                  : <Link className="btn btn-primary" to="/verification">See the results</Link>}
+                    <div>
+                          <span className="muted small">Step {active + 1} of {steps.length}</span>
+            <h2>{step.title}</h2>
+            <p>{step.text}</p>
+            {active === 5 && (
+              <div className="decision">
+                <div className="decision-q">Beats both raw and global correction?</div>
+                <div className="decision-a good">Yes: serve corrected rainfall</div>
+                <div className="decision-a warn">No: serve raw, show the reason</div>
               </div>
-            </m.div>
-          </AnimatePresence>
-        </div>
+            )}
+            <div className="pipeline-nav">
+              <button className="btn btn-secondary" disabled={active === 0} onClick={() => setActive(active - 1)}>Previous</button>
+              {active < steps.length - 1
+                ? <button className="btn btn-primary" onClick={() => setActive(active + 1)}>Next step</button>
+                : <Link className="btn btn-primary" to="/verification">See the results</Link>}
+            </div>
+          </div>
+                </div>
       </div>
 
       <Section title="Design choices">
         <div className="grid-3 grid-4">
-          {details.map((d, i) => <Reveal key={d.title} delay={i * 0.06} className="card pad"><h3>{d.title}</h3><p className="muted">{d.text}</p></Reveal>)}
+          {details.map((d) => <div key={d.title} className="card pad"><h3>{d.title}</h3><p className="muted">{d.text}</p></div>)}
         </div>
       </Section>
 

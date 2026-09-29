@@ -1,8 +1,7 @@
 import { useRef, useState, type DragEvent } from 'react';
-import { AnimatePresence, m } from 'motion/react';
-import { Download, FileSpreadsheet, UploadCloud, X } from 'lucide-react';
+import { Download, FileSpreadsheet, X } from 'lucide-react';
 import { mm, pct } from '../lib';
-import { ErrorState, GateChip, PageHeader, Section, ease } from '../components/ui';
+import { ErrorState, GateChip, PageHeader, Section } from '../components/ui';
 
 type Row = { row: number; dominant_regime: string; raw_mm: number; p10: number; p50: number; p90: number; served_mm: number; gate_status: string; prob_64_5: number };
 
@@ -18,11 +17,13 @@ export default function UploadPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [results, setResults] = useState<Row[]>([]);
+  const [ran, setRan] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   function choose(f: File | null | undefined) {
     if (busy) return;
     setResults([]);
+    setRan(false);
     setFile(null);
     setError(null);
     if (f && (!f.name.toLowerCase().endsWith('.csv') || f.size > 2 * 1024 * 1024 || f.size === 0)) {
@@ -44,7 +45,7 @@ export default function UploadPage() {
       const json = await response.json().catch(() => null);
       if (!response.ok) throw new Error(`${json?.error || `Upload failed (${response.status}). Please try again.`}${json?.details?.length ? `: ${json.details.join(', ')}` : ''}`);
       if (!Array.isArray(json?.items)) throw new Error('The server returned an invalid result. Please try again.');
-      setResults(json.items);
+      setResults(json.items); setRan(true);
     } catch (e) { setError(e instanceof Error ? e : new Error(String(e))); } finally { setBusy(false); }
   }
 
@@ -56,28 +57,26 @@ export default function UploadPage() {
         <div className="card pad">
           <div className={`dropzone ${drag ? 'is-drag' : ''} ${file ? 'has-file' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
-            <input ref={input} id="forecast-csv" className="sr-only" type="file" disabled={busy} accept=".csv,text/csv" onChange={(e) => choose(e.target.files?.[0])} />
-            <AnimatePresence mode="wait" initial={false}>
-              {file ? (
-                <m.div key="file" className="dropzone-file" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.2, ease }}>
-                  <FileSpreadsheet size={28} aria-hidden />
-                  <div><strong>{file.name}</strong><small className="muted block">{(file.size / 1024).toFixed(1)} KB</small></div>
-                  <button className="icon-btn" disabled={busy} aria-label="Remove file" onClick={() => { choose(null); if (input.current) input.current.value = ''; }}><X size={16} /></button>
-                </m.div>
-              ) : (
-                <m.div key="empty" className="dropzone-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-                  <m.span className="dropzone-icon" animate={drag ? { y: -4, scale: 1.08 } : { y: 0, scale: 1 }}><UploadCloud size={26} aria-hidden /></m.span>
-                  <strong>Drop a CSV file here</strong>
-                  <p className="muted small">Up to 1,000 rows and 2 MB</p>
-                  <button type="button" className="btn btn-secondary" onClick={() => input.current?.click()}>Choose file</button>
-                </m.div>
-              )}
-            </AnimatePresence>
+            <input ref={input} id="forecast-csv" className="sr-only" type="file" tabIndex={-1} aria-label="Forecast CSV file" aria-describedby="csv-hint" disabled={busy} accept=".csv,text/csv" onChange={(e) => choose(e.target.files?.[0])} />
+            {file ? (
+              <div className="dropzone-file">
+                <FileSpreadsheet size={28} aria-hidden />
+                <div><strong>{file.name}</strong><small className="muted block">{(file.size / 1024).toFixed(1)} KB</small></div>
+                <button type="button" className="icon-btn" disabled={busy} aria-label="Remove file" onClick={() => { choose(null); if (input.current) input.current.value = ''; }}><X size={16} aria-hidden /></button>
+              </div>
+            ) : (
+              <div className="dropzone-empty">
+                <strong>Drop a CSV file here</strong>
+                <p className="muted small" id="csv-hint">Up to 1,000 rows and 2 MB</p>
+                <button type="button" className="btn btn-secondary" onClick={() => input.current?.click()}>Choose file</button>
+              </div>
+            )}
           </div>
-          <button className="btn btn-primary btn-block" disabled={!file || busy} onClick={submit}>
+          <button type="button" className="btn btn-primary btn-block" disabled={!file || busy} onClick={submit}>
             {busy ? <><span className="spinner" aria-hidden /> Processing…</> : <>Run correction</>}
           </button>
-          {error && <div className="mt"><ErrorState error={error} /></div>}
+          <p className="muted small mt" role="status">{busy ? 'Processing your file…' : !file && !error ? 'No file chosen yet.' : ''}</p>
+          {error && <div className="mt" role="alert"><ErrorState error={error} /></div>}
         </div>
 
         <div className="card pad">
@@ -90,8 +89,9 @@ export default function UploadPage() {
         </div>
       </div>
 
+      {ran && !results.length && <p className="muted mt" role="status">The file was processed but no rows were returned.</p>}
       {results.length > 0 && (
-        <m.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
+        <div>
           <Section title="Results" description={`${results.length} row${results.length === 1 ? '' : 's'} processed. The gate decides whether the corrected or raw value is served.`}>
             <div className="card table-card">
               <div className="table-scroll">
@@ -106,7 +106,7 @@ export default function UploadPage() {
               </div>
             </div>
           </Section>
-        </m.div>
+        </div>
       )}
     </div>
   );

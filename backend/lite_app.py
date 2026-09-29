@@ -7,7 +7,7 @@ ponytail: mirrors backend.app by hand; tests/test_lite.py compares both on the s
 """
 from datetime import datetime, timezone
 from functools import lru_cache
-from io import BytesIO, StringIO
+from io import StringIO
 from pathlib import Path
 import csv
 import json
@@ -18,8 +18,10 @@ import urllib.parse
 import urllib.request
 
 import numpy as np
-from flask import Flask, Response, jsonify, request, send_file
+from flask import Flask, Response, jsonify, request
 
+from backend import common
+from backend.common import error
 from backend.lite import REGIMES, THRESHOLDS, predict
 
 DATA = Path(os.environ.get("MONSOONLENS_DATA", Path(__file__).resolve().parent / "data" / "vercel"))
@@ -57,32 +59,13 @@ def season():
         return {k: z[k] for k in z.files}
 
 
-def error(message, code="bad_request", details=None, status=400):
-    return jsonify({"error": message, "code": code, "details": details or []}), status
-
-
-def explain(item):
-    item["regime_probabilities"] = {name: item[f"regime_{r}"] for r, name in enumerate(REGIMES)}
-    item["gate_reason"] = report()["gate"][item["dominant_regime"]]["reason"]
-    item["drivers"] = [{"name": name, "value": item[name]} for name in ("moisture", "wind", "mslp", "terrain_m", "coast_km")]
-    p = item["prob_64_5"]
-    item["advisory"] = "High heavy-rain signal; check IMD district warnings." if p >= .6 else "Moderate heavy-rain signal; monitor IMD updates." if p >= .3 else "Low heavy-rain signal."
-    return item
-
-
 def selection():
     """(date index, date, lead) from the query string, with the same rules as backend.app."""
-    s = season()
-    dates = [str(d) for d in s["dates"]]
-    try:
-        lead = int(request.args.get("lead", 1))
-    except ValueError:
-        raise ValueError("Invalid lead")
-    if not 1 <= lead <= 5:
-        raise ValueError("Lead must be 1–5")
-    date = request.args.get("date") or dates[-1]
+    dates = [str(d) for d in season()["dates"]]
+    lead = common.int_arg("lead", 1, 1, 5)
+    date = common.date_arg(dates[-1])
     if date not in dates:
-        raise ValueError("Date is outside the demo season")
+        raise common.outside_season()
     return dates.index(date), date, lead
 
 
@@ -176,13 +159,7 @@ def create_app():
     app = Flask(__name__, static_folder=None)
     app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
-    @app.errorhandler(ValueError)
-    def invalid(exc):
-        return error(str(exc))
-
-    @app.errorhandler(413)
-    def too_large(_):
-        return error("Upload exceeds 2 MB", "too_large", status=413)
+    common.install(app)
 
     @app.after_request
     def cache(response):
@@ -207,18 +184,13 @@ def create_app():
     @app.get("/api/v1/forecast")
     def forecast():
         d, date, lead = selection()
-        layer = request.args.get("layer", "corrected")
-        if layer not in {"corrected", "raw", "diff", "observed", "probability"}:
-            return error("Invalid layer", details=["corrected", "raw", "diff", "observed", "probability"])
+        layer = common.layer_arg()
+        page, per_page = common.paging()
         items = sorted((row(d, lead, i, date) for i in range(len(districts()))), key=lambda r: r["district"])
         for item in items:
             item["observed_mm"] = item.pop("truth_mm")
             item["value"] = {"corrected": item["served_mm"], "raw": item["raw_mm"], "diff": item["served_mm"] - item["raw_mm"],
                              "observed": item["observed_mm"], "probability": item["prob_64_5"]}[layer]
-        per_page = int(request.args.get("per_page", 1000))
-        page = int(request.args.get("page", 1))
-        if not (1 <= per_page <= 1000 and page >= 1):
-            return error("Invalid page")
         return jsonify({"items": items[(page - 1) * per_page: page * per_page], "total": len(items), "date": date, "lead": lead, "layer": layer})
 
     @app.get("/api/v1/districts/<district_id>")
@@ -227,23 +199,20 @@ def create_app():
         index = next((i for i, m in enumerate(districts()) if m["district_id"] == district_id), None)
         if index is None:
             return error("District forecast not found", "not_found", status=404)
-        item = explain(row(d, lead, index, date))
+        item = common.explain(row(d, lead, index, date), REGIMES, report()["gate"])
         item["observed_mm"] = item.pop("truth_mm")
         s = season()
-        truth, raw, served = (s[k][:, lead - 1, index].astype(float) for k in ("truth_mm", "raw_mm", "served_mm"))
-        item["season"] = {"days": len(truth), "heavy_days": int(np.sum(truth >= 64.5)), "rmse_raw": float(np.sqrt(np.mean((raw - truth) ** 2))),
-                          "rmse_served": float(np.sqrt(np.mean((served - truth) ** 2)))}
+        item["season"] = common.season_stats(*(s[k][:, lead - 1, index].astype(float) for k in ("truth_mm", "raw_mm", "served_mm")))
         return jsonify(item)
 
     @app.get("/api/v1/live")
     def live():
-        lead = request.args.get("lead")
-        if lead is not None and lead not in {"1", "2", "3", "4", "5"}:
-            return error("Lead must be 1–5")
+        lead = common.int_arg("lead", None, 1, 5)
+        cached_only = common.flag("cached")
         status, message = "ready", None
         run = best_run()
         # `cached=1` never calls Open-Meteo, so pages paint at once; the plain request refreshes when the run is stale.
-        if request.args.get("cached") != "1" and (run is None or _age(run) > LIVE_TTL_S):
+        if not cached_only and (run is None or _age(run) > LIVE_TTL_S):
             try:
                 _live.update(data=live_run(), at=time.time())
                 run = _live["data"]
@@ -256,13 +225,13 @@ def create_app():
             return response, 503
         names = {m["district_id"]: m for m in districts()}
         drop = {"moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon", *(f"regime_{i}" for i in range(6))}
-        items = [{k: v for k, v in explain({**names[r["district_id"]], **r, "observed_mm": None}).items() if k not in drop}
-                 for r in cached["rows"] if lead in (None, str(r["lead"]))]
+        items = [{k: v for k, v in common.explain({**names[r["district_id"]], **r, "observed_mm": None}, REGIMES, report()["gate"]).items() if k not in drop}
+                 for r in cached["rows"] if lead in (None, r["lead"])]
         for item in items:
             item["value"] = item["served_mm"]
         dates = sorted({r["date"] for r in cached["rows"]})
         response = jsonify({"status": status, "error": message, "age_s": _age(cached), "fetched_at": cached["fetched_at"], "dates": dates,
-                            "lead": int(lead) if lead else None, "date": items[0]["date"] if items else None, "items": items, "total": len(items),
+                            "lead": lead, "date": items[0]["date"] if items else None, "items": items, "total": len(items),
                             "source": "Open-Meteo best-match NWP (CC BY 4.0)"})
         # One CDN copy per 3 h (stale while revalidating) keeps the free Open-Meteo quota safe.
         fresh_for = max(60, int(LIVE_TTL_S - _age(cached)))
@@ -273,85 +242,41 @@ def create_app():
     @app.get("/api/v1/verification")
     def verification():
         content = report()
-        regime = request.args.get("regime")
-        if regime and regime not in content["scores"]:
-            return error("Unknown verification group")
+        regime = common.verification_group(content)
         if regime:
             return jsonify({"group": regime, "scores": content["scores"][regime], "gate": content["gate"].get(regime)})
         return jsonify(content)
 
     @app.get("/api/v1/verification/report.csv")
     def csv_report():
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["group", "model", "threshold_mm", "rmse", "bias", "pod", "far", "csi", "ets", "brier", "evaluation_note"])
-        for group, by_model in report()["scores"].items():
-            for model, thresholds in by_model.items():
-                for threshold, value in thresholds.items():
-                    writer.writerow([group, model, threshold] + [value.get(key) for key in ("rmse", "bias", "pod", "far", "csi", "ets", "brier")] + [report().get("delivered_evaluation", "") if model == "Delivered" else "Synthetic 2025 test season"])
-        return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=monsoonlens-verification.csv"})
+        return common.csv_response(report())
 
     @app.get("/api/v1/verification/report.pdf")
     def pdf_report():
-        from reportlab.pdfgen import canvas
-        buffer = BytesIO()
-        page = canvas.Canvas(buffer)
-        page.setFont("Helvetica-Bold", 16)
-        page.drawString(40, 790, "MonsoonLens synthetic verification")
-        page.setFont("Helvetica", 9)
-        page.drawString(40, 770, "Demo running on synthetic data. Not an operational forecast.")
-        y = 742
-        for name, gate_data in report()["gate"].items():
-            page.drawString(40, y, f"{name}: {gate_data['status']} - {gate_data['reason'][:75]}")
-            y -= 19
-        y -= 18
-        for model, values in report()["scores"]["Overall"].items():
-            s = values["64.5"]
-            page.drawString(40, y, f"{model}: RMSE {s['rmse']:.2f} mm | " + " | ".join(f"{k.upper()} {s[k]:.3f}" if s.get(k) is not None else f"{k.upper()} n/a" for k in ("csi", "pod", "far")))
-            y -= 19
-        page.setFont("Helvetica", 8)
-        page.drawString(40, y - 15, "Delivered: retrospective results; the gate was selected on this same season.")
-        page.drawString(40, y - 28, "Independent validation is still required. Probabilities are unchanged by the gate.")
-        page.save()
-        buffer.seek(0)
-        return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name="monsoonlens-verification.pdf")
+        return common.pdf_response(report())
 
     @app.post("/api/v1/upload")
     def upload():
-        file = request.files.get("file")
-        if not file or not file.filename.lower().endswith(".csv"):
-            return error("Upload a CSV file in the 'file' field")
+        file = common.upload_file()
         try:
             reader = csv.DictReader(StringIO(file.read().decode("utf-8-sig")))
-            records = [r for _, r in zip(range(1001), reader)]
+            records = [r for _, r in zip(range(common.MAX_UPLOAD_ROWS + 1), reader)]
+            fields = reader.fieldnames or []
         except (UnicodeDecodeError, csv.Error):
-            return error("Unable to read CSV")
-        if len(records) > 1000:
-            return error("CSV exceeds 1000 rows")
-        missing = [name for name in FEATURES if name not in (reader.fieldnames or [])]
-        if missing:
-            return error("Missing required columns", details=missing)
+            raise common.BadInput("Unable to read CSV") from None
         x = np.full((len(records), len(FEATURES)), np.nan)
         for i, r in enumerate(records):
             for j, name in enumerate(FEATURES):
                 try:
                     x[i, j] = float(r[name])
-                except (TypeError, ValueError):
+                except (KeyError, TypeError, ValueError):
                     pass
-        invalid_rows = np.flatnonzero(~np.isfinite(x).all(axis=1)).tolist()
-        if invalid_rows:
-            return error("Non-numeric or missing feature values", details=[int(i + 2) for i in invalid_rows])
-        if (x[:, 0] < 0).any() or ((x[:, 1] < 1) | (x[:, 1] > 5)).any():
-            return error("Rainfall must be nonnegative and lead must be 1–5")
+        common.check_upload(len(records), [name for name in FEATURES if name not in fields], x)
         out = predict(x, models(), report()["gate"])
         rename = {"corrected_p10": "p10", "corrected_p50": "p50", "corrected_p90": "p90"}
         items = [{"row": i + 2, **{rename.get(k, k): (v[i] if isinstance(v, list) else float(v[i])) for k, v in out.items() if not k.startswith("regime_")}}
                  for i in range(len(records))]
         return jsonify({"items": items})
-
-    @app.route("/api/v1/<path:_>", methods=["GET", "POST"])
-    def not_found(_):
-        return error("Not found", "not_found", status=404)
 
     return app
 

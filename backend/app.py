@@ -1,56 +1,33 @@
 """Versioned Flask API for the synthetic MonsoonLens demo."""
 from functools import lru_cache
-from io import BytesIO, StringIO
-import csv
 import gzip
 import json
 import sqlite3
 
-from flask import Flask, Response, jsonify, request, send_file, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from pydantic import BaseModel, Field, ValidationError
 import joblib
 import numpy as np
 import pandas as pd
 import yaml
 
 from backend.data.generate_synthetic import DATA, REGIMES, ROOT
-from backend import live
+from backend import common, live
+from backend.common import BadInput, error
 from backend.pipeline.serve import predict
 from backend.pipeline.train import FEATURES, THRESHOLDS
-
-
-class Selection(BaseModel):
-    date: str | None = None
-    lead: int = Field(default=1, ge=1, le=5)
-    page: int = Field(default=1, ge=1)
-    per_page: int = Field(default=1000, ge=1, le=1000)
 
 
 LAYERS = {
     "corrected": lambda i: i["served_mm"],
     "raw": lambda i: i["raw_mm"],
-    "diff": lambda i: i["served_mm"] - i["raw_mm"],
+    "diff": lambda i: None if None in (i["served_mm"], i["raw_mm"]) else i["served_mm"] - i["raw_mm"],
     "observed": lambda i: i["observed_mm"],
     "probability": lambda i: i["prob_64_5"],
 }
-
-
-def explain(item):
-    """Adds regime probabilities, gate reason, predictors and advisory to a forecast row."""
-    item["regime_probabilities"] = {name: item[f"regime_{r}"] for r, name in enumerate(REGIMES)}
-    item["gate_reason"] = report()["gate"][item["dominant_regime"]]["reason"]
-    item["drivers"] = [{"name": name, "value": item[name]} for name in ("moisture", "wind", "mslp", "terrain_m", "coast_km")]
-    p = item["prob_64_5"]
-    item["advisory"] = "High heavy-rain signal; check IMD district warnings." if p >= .6 else "Moderate heavy-rain signal; monitor IMD updates." if p >= .3 else "Low heavy-rain signal."
-    return item
-
-
-def error(message, code="bad_request", details=None, status=400):
-    return jsonify({"error": message, "code": code, "details": details or []}), status
 
 
 @lru_cache
@@ -84,13 +61,12 @@ def latest_date():
 
 
 def selection():
-    value = Selection.model_validate(request.args.to_dict())
-    date = value.date or latest_date()
-    if not pd.to_datetime(date, format="%Y-%m-%d", errors="coerce") == pd.to_datetime(date, format="%Y-%m-%d", errors="coerce"):
-        raise ValueError("Invalid date")
+    """(date, lead, page, per_page) from the query string; the date must exist in the season."""
+    lead, (page, per_page) = common.int_arg("lead", 1, 1, 5), common.paging()
+    date = common.date_arg(latest_date())
     if not rows("SELECT 1 FROM forecasts WHERE date=? LIMIT 1", (date,)):
-        raise ValueError("Date is outside the demo season")
-    return value, date
+        raise common.outside_season()
+    return date, lead, page, per_page
 
 
 def create_app():
@@ -100,6 +76,7 @@ def create_app():
     cfg = yaml.safe_load((ROOT / "config/settings.yaml").read_text())
     CORS(app, resources={r"/api/v1/*": {"origins": [cfg["frontend_origin"]]}})
     limiter = Limiter(get_remote_address, app=app, default_limits=["600 per minute"])
+    common.install(app)
 
     @app.after_request
     def compress(response):
@@ -117,18 +94,6 @@ def create_app():
             response.headers["Cache-Control"] = "public, max-age=60"
         return response
 
-    @app.errorhandler(ValidationError)
-    def validation(exc):
-        return error("Invalid query", details=exc.errors(include_url=False))
-
-    @app.errorhandler(ValueError)
-    def invalid(exc):
-        return error(str(exc))
-
-    @app.errorhandler(413)
-    def too_large(_):
-        return error("Upload exceeds 2 MB", "too_large", status=413)
-
     @app.get("/api/v1/health")
     def health():
         ready = (DATA / "monsoonlens.db").exists() and (DATA / "verification.json").exists()
@@ -144,7 +109,8 @@ def create_app():
 
     @app.get("/api/v1/live")
     def live_forecast():
-        lead = Selection.model_validate({"lead": request.args["lead"]}).lead if "lead" in request.args else None  # no lead: all five
+        lead = common.int_arg("lead", None, 1, 5)  # no lead: all five
+        common.flag("cached")  # accepted for parity with the serverless app; the local cache is always served first
         districts = pd.DataFrame(rows("SELECT * FROM districts"))
         state = live.load(districts, lambda df: predict(df, models(), report()["gate"]))
         cached = state.pop("cached")
@@ -152,7 +118,7 @@ def create_app():
             return jsonify({**state, "items": []}), 202 if state["status"] == "fetching" else 503
         names = districts.set_index("district_id")[["district", "state", "lat", "lon", "terrain_m", "coast_km"]].to_dict("index")
         drop = {"moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon", *(f"regime_{i}" for i in range(len(REGIMES)))}
-        items = [{k: v for k, v in explain({**names[r["district_id"]], **r, "observed_mm": None}).items() if k not in drop} for r in cached["rows"] if lead in (None, r["lead"]) and r["district_id"] in names]
+        items = [{k: v for k, v in common.explain({**names[r["district_id"]], **r, "observed_mm": None}, REGIMES, report()["gate"]).items() if k not in drop} for r in cached["rows"] if lead in (None, r["lead"]) and r["district_id"] in names]
         for item in items:
             item["value"] = item["served_mm"]
         dates = sorted({r["date"] for r in cached["rows"]})
@@ -168,127 +134,74 @@ def create_app():
 
     @app.get("/api/v1/forecast")
     def forecast():
-        selected, date = selection()
-        layer = request.args.get("layer", "corrected")
-        if layer not in LAYERS:
-            return error("Invalid layer", details=list(LAYERS))
-        offset = (selected.page - 1) * selected.per_page
-        records = rows("SELECT f.district_id,d.district,d.state,d.lat,d.lon,f.date,f.lead,f.raw_mm,f.served_mm,f.corrected_p10,f.corrected_p50,f.corrected_p90,f.truth_mm AS observed_mm,f.dominant_regime,f.gate_status,f.prob_64_5,f.prob_115_6,f.prob_204_5 FROM forecasts f JOIN districts d ON f.district_id=d.district_id WHERE f.date=? AND f.lead=? ORDER BY d.district LIMIT ? OFFSET ?", (date, selected.lead, selected.per_page, offset))
+        date, lead, page, per_page = selection()
+        layer = common.layer_arg()
+        offset = (page - 1) * per_page
+        records = rows("SELECT f.district_id,d.district,d.state,d.lat,d.lon,f.date,f.lead,f.raw_mm,f.served_mm,f.corrected_p10,f.corrected_p50,f.corrected_p90,f.truth_mm AS observed_mm,f.dominant_regime,f.gate_status,f.prob_64_5,f.prob_115_6,f.prob_204_5 FROM forecasts f JOIN districts d ON f.district_id=d.district_id WHERE f.date=? AND f.lead=? ORDER BY d.district LIMIT ? OFFSET ?", (date, lead, per_page, offset))
         for item in records:
             item["value"] = LAYERS[layer](item)
-        total = rows("SELECT COUNT(*) AS n FROM forecasts WHERE date=? AND lead=?", (date, selected.lead))[0]["n"]
-        return jsonify({"items": records, "total": total, "date": date, "lead": selected.lead, "layer": layer})
+        total = rows("SELECT COUNT(*) AS n FROM forecasts WHERE date=? AND lead=?", (date, lead))[0]["n"]
+        return jsonify({"items": records, "total": total, "date": date, "lead": lead, "layer": layer})
 
     @app.get("/api/v1/districts/<district_id>")
     def district(district_id):
-        selected, date = selection()
-        found = rows("SELECT f.*,d.district,d.state,d.lat,d.lon FROM forecasts f JOIN districts d ON f.district_id=d.district_id WHERE f.district_id=? AND f.date=? AND f.lead=?", (district_id, date, selected.lead))
+        date, lead, _, _ = selection()
+        found = rows("SELECT f.*,d.district,d.state,d.lat,d.lon FROM forecasts f JOIN districts d ON f.district_id=d.district_id WHERE f.district_id=? AND f.date=? AND f.lead=?", (district_id, date, lead))
         if not found:
             return error("District forecast not found", "not_found", status=404)
-        item = explain(found[0])
+        item = common.explain(found[0], REGIMES, report()["gate"])
         item["observed_mm"] = item.pop("truth_mm")
-        season = rows("SELECT truth_mm,raw_mm,served_mm FROM forecasts WHERE district_id=? AND lead=?", (district_id, selected.lead))
-        truth, raw, served = (np.array([r[k] for r in season]) for k in ("truth_mm", "raw_mm", "served_mm"))
-        item["season"] = {"days": len(season), "heavy_days": int(np.sum(truth >= 64.5)), "rmse_raw": float(np.sqrt(np.mean((raw - truth) ** 2))), "rmse_served": float(np.sqrt(np.mean((served - truth) ** 2)))}
+        season = rows("SELECT truth_mm,raw_mm,served_mm FROM forecasts WHERE district_id=? AND lead=?", (district_id, lead))
+        item["season"] = common.season_stats(*(np.array([np.nan if r[k] is None else r[k] for r in season], dtype=float) for k in ("truth_mm", "raw_mm", "served_mm")))
         return jsonify(item)
 
     @app.get("/api/v1/regimes")
     def regimes():
-        _, date = selection()
+        date, *_ = selection()
         return jsonify({"date": date, "items": rows("SELECT dominant_regime,COUNT(*) AS count FROM forecasts WHERE date=? AND lead=1 GROUP BY dominant_regime", (date,)), "gate": report()["gate"], "classifier": report()["classifier"]})
 
     @app.get("/api/v1/alerts")
     def alerts():
-        selected, date = selection()
-        threshold = request.args.get("threshold", "64.5")
-        if threshold not in {"64.5", "115.6", "204.5"}:
-            return error("Invalid threshold")
-        try:
-            minimum = float(request.args.get("min_prob", "0.3"))
-        except ValueError:
-            return error("Invalid minimum probability")
-        if not 0 <= minimum <= 1:
-            return error("Minimum probability must be between 0 and 1")
+        date, lead, page, per_page = selection()
+        threshold, minimum = common.alert_args()
         column = "prob_" + threshold.replace(".", "_")
         state = request.args.get("state")
         query = f"SELECT f.district_id,d.district,d.state,f.date,f.lead,f.{column} AS probability,f.dominant_regime,f.gate_status,f.served_mm FROM forecasts f JOIN districts d ON f.district_id=d.district_id WHERE f.date=? AND f.lead=? AND f.{column}>=?"
-        params = [date, selected.lead, minimum]
+        params = [date, lead, minimum]
         if state:
             query += " AND d.state=?"
             params.append(state)
         query += " ORDER BY probability DESC LIMIT ? OFFSET ?"
-        params.extend([selected.per_page, (selected.page-1)*selected.per_page])
+        params.extend([per_page, (page - 1) * per_page])
         return jsonify({"items": rows(query, params), "threshold": float(threshold), "date": date})
 
     @app.get("/api/v1/verification")
     def verification():
         content = report()
-        regime = request.args.get("regime")
-        if regime and regime not in content["scores"]:
-            return error("Unknown verification group")
+        regime = common.verification_group(content)
         if regime:
             return jsonify({"group": regime, "scores": content["scores"][regime], "gate": content["gate"].get(regime)})
         return jsonify(content)
 
     @app.get("/api/v1/verification/report.csv")
     def csv_report():
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["group", "model", "threshold_mm", "rmse", "bias", "pod", "far", "csi", "ets", "brier", "evaluation_note"])
-        for group, models_by_name in report()["scores"].items():
-            for model, thresholds in models_by_name.items():
-                for threshold, value in thresholds.items():
-                    writer.writerow([group, model, threshold] + [value.get(key) for key in ("rmse", "bias", "pod", "far", "csi", "ets", "brier")] + [report().get("delivered_evaluation", "") if model == "Delivered" else "Synthetic 2025 test season"])
-        return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=monsoonlens-verification.csv"})
+        return common.csv_response(report())
 
     @app.get("/api/v1/verification/report.pdf")
     def pdf_report():
-        from reportlab.pdfgen import canvas
-        buffer = BytesIO()
-        page = canvas.Canvas(buffer)
-        page.setFont("Helvetica-Bold", 16)
-        page.drawString(40, 790, "MonsoonLens synthetic verification")
-        page.setFont("Helvetica", 9)
-        page.drawString(40, 770, "Demo running on synthetic data. Not an operational forecast.")
-        y = 742
-        for name, gate_data in report()["gate"].items():
-            page.drawString(40, y, f"{name}: {gate_data['status']} - {gate_data['reason'][:75]}")
-            y -= 19
-        y -= 18
-        for model, values in report()["scores"]["Overall"].items():
-            s = values["64.5"]
-            page.drawString(40, y, f"{model}: RMSE {s['rmse']:.2f} mm | " + " | ".join(f"{k.upper()} {s[k]:.3f}" if s.get(k) is not None else f"{k.upper()} n/a" for k in ("csi", "pod", "far")))
-            y -= 19
-        page.setFont("Helvetica", 8)
-        page.drawString(40, y - 15, "Delivered: retrospective results; the gate was selected on this same season.")
-        page.drawString(40, y - 28, "Independent validation is still required. Probabilities are unchanged by the gate.")
-        page.save()
-        buffer.seek(0)
-        return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name="monsoonlens-verification.pdf")
+        return common.pdf_response(report())
 
     @app.post("/api/v1/upload")
     @limiter.limit("10 per hour")
     def upload():
-        file = request.files.get("file")
-        if not file or not file.filename.lower().endswith(".csv"):
-            return error("Upload a CSV file in the 'file' field")
+        file = common.upload_file()
         try:
-            incoming = pd.read_csv(file, nrows=1001)
-        except Exception:
-            return error("Unable to read CSV")
-        if len(incoming) > 1000:
-            return error("CSV exceeds 1000 rows")
-        if incoming.empty:
-            return error("CSV must contain at least one forecast row")
+            incoming = pd.read_csv(file, nrows=common.MAX_UPLOAD_ROWS + 1)
+        except Exception:  # empty file, binary junk, ragged rows, bad encoding
+            raise BadInput("Unable to read CSV") from None
         missing = [name for name in FEATURES if name not in incoming]
-        if missing:
-            return error("Missing required columns", details=missing)
-        numeric = incoming[FEATURES].apply(pd.to_numeric, errors="coerce")
-        invalid_rows = np.flatnonzero(~np.isfinite(numeric.to_numpy(dtype=float)).all(axis=1)).tolist()
-        if invalid_rows:
-            return error("Non-numeric or missing feature values", details=[int(i+2) for i in invalid_rows])
-        if (numeric.raw_mm < 0).any() or (~numeric.lead.between(1, 5)).any() or (numeric.lead % 1 != 0).any():
-            return error("Rainfall must be nonnegative and lead must be a whole number from 1–5")
+        numeric = incoming.reindex(columns=FEATURES).apply(pd.to_numeric, errors="coerce")
+        common.check_upload(len(incoming), missing, numeric.to_numpy(dtype=float))
         result = predict(numeric, models(), report()["gate"])
         result.insert(0, "row", np.arange(2, len(result) + 2))
         items = result.drop(columns=[f"regime_{r}" for r in range(len(REGIMES))]).rename(columns={"corrected_p10": "p10", "corrected_p50": "p50", "corrected_p90": "p90"}).to_dict("records")

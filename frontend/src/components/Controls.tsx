@@ -46,13 +46,20 @@ export function DayStrip() {
   const { source, date, lead, setLead } = useForecastStore();
   const days = useLiveDays(source === 'live');
   return (
-    <div className="day-strip" role="tablist" aria-label="Forecast day">
+    <div className="day-strip" role="tablist" aria-label="Forecast day" onKeyDown={(e) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!step || e.altKey || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      const n = Math.min(5, Math.max(1, lead + step));
+      setLead(n);
+      e.currentTarget.querySelectorAll<HTMLElement>('[role=tab]')[n - 1]?.focus();
+    }}>
       {[1, 2, 3, 4, 5].map((n) => {
         const d = days?.[n - 1];
         const active = n === lead;
         const label = source === 'live' && d?.date ? shortDay(d.date) : null;
         return (
-          <button key={n} role="tab" aria-selected={active} className={`day${active ? ' is-active' : ''}`} onClick={() => setLead(n)}>
+          <button key={n} role="tab" aria-selected={active} tabIndex={active ? 0 : -1} className={`day${active ? ' is-active' : ''}`} onClick={() => setLead(n)}>
             {active && <m.span layoutId="day-thumb" className="day-thumb" transition={{ type: 'spring', stiffness: 480, damping: 40 }} />}
             <span className="day-top">{label ? label.weekday : `Day +${n}`}</span>
             <span className="day-main">{label ? label.day : date ? `issued ${minusDays(date, n)}` : '—'}</span>

@@ -3,7 +3,7 @@ import type { Score } from '../lib';
 
 type Series = { key: string; label: string; color: string; points: { threshold: string; score: Score }[] };
 
-const W = 420, H = 400, L = 48, R = 16, T = 14, B = 44;
+const W = 420, H = 400, L = 48, R = 16, T = 16, B = 46;
 const x = (sr: number) => L + sr * (W - L - R);
 const y = (pod: number) => H - B - pod * (H - T - B);
 const CSI = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
@@ -33,7 +33,7 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
           <g key={c}>
             <polyline points={contour(c)} fill="none" stroke={grid} strokeWidth={1} />
             {/* label where the contour crosses the diagonal SR = POD = 2c / (1 + c) */}
-            <text x={x((2 * c) / (1 + c)) + 3} y={y((2 * c) / (1 + c)) - 3} fontSize="9.5" fill={axis} opacity={0.9}>{c.toFixed(1)}</text>
+            <text x={x((2 * c) / (1 + c)) + 3} y={y((2 * c) / (1 + c)) - 3} fontSize="11" fill={axis}>{c.toFixed(1)}</text>
           </g>
         ))}
         {BIAS.map((b) => {
@@ -41,19 +41,19 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
           return (
             <g key={b}>
               <line x1={x(0)} y1={y(0)} x2={x(end.sr)} y2={y(end.pod)} stroke={axis} strokeOpacity={0.45} strokeDasharray="3 4" strokeWidth={1} />
-              <text x={x(end.sr) + (b >= 1 ? 2 : -2)} y={y(end.pod) + (b >= 1 ? -3 : 11)} textAnchor={b >= 1 ? 'start' : 'end'} fontSize="9" fill={axis}>{b}</text>
+              <text x={x(end.sr) + (b >= 1 ? 2 : -2)} y={y(end.pod) + (b >= 1 ? -3 : 11)} textAnchor={b >= 1 ? 'start' : 'end'} fontSize="10.5" fill={axis}>{b}</text>
             </g>
           );
         })}
         <rect x={x(0)} y={y(1)} width={x(1) - x(0)} height={y(0) - y(1)} fill="none" stroke={grid} />
         {[0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => (
-          <g key={t} fontSize="10.5" fill={axis}>
+          <g key={t} fontSize="12" fill={axis}>
             <text x={x(t)} y={H - B + 16} textAnchor="middle">{t.toFixed(1)}</text>
             <text x={L - 8} y={y(t) + 3.5} textAnchor="end">{t.toFixed(1)}</text>
           </g>
         ))}
-        <text x={(x(0) + x(1)) / 2} y={H - 8} textAnchor="middle" fontSize="11.5" fill={text}>Success ratio (1 − FAR) →</text>
-        <text transform={`translate(12 ${(y(0) + y(1)) / 2}) rotate(-90)`} textAnchor="middle" fontSize="11.5" fill={text}>Probability of detection →</text>
+        <text x={(x(0) + x(1)) / 2} y={H - 8} textAnchor="middle" fontSize="12.5" fill={text}>Success ratio (1 − FAR)</text>
+        <text transform={`translate(13 ${(y(0) + y(1)) / 2}) rotate(-90)`} textAnchor="middle" fontSize="12.5" fill={text}>Probability of detection</text>
         {series.map((sr) => {
           const pts = sr.points.filter((p) => p.score.pod !== null && p.score.far !== null);
           return (
@@ -63,10 +63,10 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
                 const on = p.threshold === active;
                 const cx = x(1 - (p.score.far ?? 0)), cy = y(p.score.pod ?? 0);
                 return (
-                  <g key={p.threshold} onMouseEnter={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} onMouseLeave={() => setHover(null)} style={{ cursor: 'default' }}>
+                  <g key={p.threshold} onMouseEnter={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} onMouseLeave={() => setHover(null)} onClick={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} style={{ cursor: 'default' }}>
                     <circle cx={cx} cy={cy} r={12} fill="transparent" />
                     <circle cx={cx} cy={cy} r={on ? 6.5 : 4.5} fill={sr.color} stroke="var(--surface)" strokeWidth={2} opacity={on ? 1 : 0.75} />
-                    {sr.key === 'Delivered' && <text x={cx + 9} y={cy - 7} fontSize="10" fontWeight={600} fill={text}>{p.threshold}</text>}
+                    {sr.key === 'Delivered' && <text x={cx + 9} y={cy - 7} fontSize="11" fontWeight={600} fill={text}>{p.threshold}</text>}
                     <title>{`${sr.label} · ≥ ${p.threshold} mm — POD ${(p.score.pod ?? 0).toFixed(3)}, success ratio ${(1 - (p.score.far ?? 0)).toFixed(3)}, CSI ${(p.score.csi ?? 0).toFixed(3)}`}</title>
                   </g>
                 );
@@ -77,7 +77,7 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
       </svg>
       <p className="perf-readout" aria-live="polite">
         {hover ? <><b>{hover.label}</b> at ≥ {hover.threshold} mm · POD <b className="num">{(hover.s.pod ?? 0).toFixed(2)}</b> · FAR <b className="num">{(hover.s.far ?? 0).toFixed(2)}</b> · CSI <b className="num">{(hover.s.csi ?? 0).toFixed(2)}</b> · bias <b className="num">{((hover.s.pod ?? 0) / (1 - (hover.s.far ?? 0) || 1)).toFixed(2)}</b></>
-          : <>Solid curves: CSI. Dashed lines: frequency bias. Numbers beside the delivered-forecast points are thresholds (mm). Point at a marker for its scores.</>}
+          : <>Solid curves: CSI. Dashed lines: frequency bias. Numbers beside the delivered-forecast points are thresholds (mm). Hover or tap a marker for its scores.</>}
       </p>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useForecast } from '../data';
@@ -57,7 +57,7 @@ function Legend({ layer }: { layer: Layer }) {
 
 export default function ForecastPage() {
   const theme = useResolvedTheme();
-  const { source, lead, layer, setLayer } = useForecastStore();
+  const { source, lead, layer, setLayer, setLead } = useForecastStore();
   const isLive = source === 'live';
   const shownLayers = (Object.keys(layers) as Layer[]).filter((l) => !(isLive && l === 'observed'));
   const forecast = useForecast();
@@ -70,6 +70,16 @@ export default function ForecastPage() {
     setParams(next, { replace: true });
   };
   const [search, setSearch] = useState('');
+  // [ / ] step the live lead day; ignored while typing or with modifiers.
+  useEffect(() => {
+    if (source !== 'live') return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== '[' && e.key !== ']') || e.ctrlKey || e.metaKey || e.altKey || (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]'))) return;
+      setLead(Math.min(5, Math.max(1, lead + (e.key === ']' ? 1 : -1))));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [source, lead, setLead]);
   const items: Forecast[] = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
   const date = forecast.data?.date ?? '';
   const liveStatus = forecast.data && 'status' in forecast.data ? forecast.data.status : undefined;
@@ -136,7 +146,7 @@ export default function ForecastPage() {
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search district or state" aria-label="Search district or state" />
               {search && <button className="icon-btn icon-btn-sm" onClick={() => setSearch('')} aria-label="Clear district search"><X size={14} aria-hidden /></button>}
             </div>
-            <span className="muted small" role="status">{loading ? 'Loading districts…' : error ? 'Districts unavailable' : `${list.length} districts · ranked by ${L.label.toLowerCase()}`}</span>
+            <span className="muted small" role="status" aria-live="polite">{loading ? 'Loading districts…' : error ? 'Districts unavailable' : `${list.length} districts · ranked by ${L.label.toLowerCase()}`}</span>
           </div>
           <ul className="district-list">
             {!error && loading && Array.from({ length: 8 }, (_, i) => <li key={i} className="pad-sm"><Skeleton height={34} /></li>)}
