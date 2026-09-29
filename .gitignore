@@ -1,0 +1,14 @@
+.vendor/
+node_modules/
+.pnpm-store/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.db
+*.parquet
+*.joblib
+*.tsbuildinfo
+backend/data/verification.json
+backend/data/districts.geojson
+.env

@@ -1,0 +1,15 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports: ["5000:5000"]
+    volumes: ["./backend/data:/app/backend/data"]
+    command: >-
+      sh -c 'if [ ! -s backend/data/synthetic.parquet ]; then python -m backend.data.generate_synthetic; fi;
+      if [ ! -s backend/data/models.joblib ] || [ ! -s backend/data/verification.json ]; then python -m backend.pipeline.train; fi;
+      python -m backend.app'
+  web:
+    build: ./frontend
+    ports: ["5173:5173"]
+    depends_on: [api]

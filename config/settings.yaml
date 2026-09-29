@@ -1,0 +1,12 @@
+seed: 26080
+district_count: 96
+full_district_count: 700
+seasons: [2021, 2022, 2023, 2024, 2025]
+start_month_day: '06-01'
+end_month_day: '09-30'
+lead_days: [1, 2, 3, 4, 5]
+thresholds_mm: [64.5, 115.6, 204.5]
+regimes: [Active, Break, Depression, Orographic, Coastal, Western disturbance]
+minimum_gate_events: 8
+bootstrap_replicates: 100
+frontend_origin: http://localhost:5173
