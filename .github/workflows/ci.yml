@@ -10,12 +10,13 @@ jobs:
           python-version: '3.12'
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: 9.15.9
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pip install -r requirements.txt
+      - run: python -m backend.data.generate_synthetic --districts 150 && python -m backend.data.validate && python -m backend.pipeline.train
       - run: python -m pytest backend/tests -q
       - run: cd frontend && pnpm install --frozen-lockfile && pnpm test && pnpm build

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { m, useInView, useReducedMotion } from 'motion/react';
+import { m, useReducedMotion } from 'motion/react';
 import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 
 export const ease = [0.22, 1, 0.36, 1] as const;
@@ -41,25 +41,27 @@ export function Reveal({ children, delay = 0, className, as = 'div' }: { childre
   );
 }
 
-export function CountUp({ value, format = (n) => Math.round(n).toLocaleString('en-IN'), duration = 900 }: { value: number; format?: (n: number) => string; duration?: number }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true });
+/** Shows the real value immediately and tweens when it changes (never renders a placeholder number). */
+export function CountUp({ value, format = (n) => Math.round(n).toLocaleString('en-IN'), duration = 600 }: { value: number; format?: (n: number) => string; duration?: number }) {
   const reduced = useReducedMotion();
-  const [shown, setShown] = useState(reduced ? value : 0);
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
   useEffect(() => {
-    if (!inView) return;
-    if (reduced) { setShown(value); return; }
+    const start = from.current;
+    from.current = value;
+    if (reduced || start === value) { setShown(value); return; }
     let frame = 0;
-    const start = performance.now();
+    const t0 = performance.now();
     const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      setShown(value * (1 - Math.pow(1 - t, 3)));
+      const t = Math.min(1, (now - t0) / duration);
+      setShown(start + (value - start) * (1 - Math.pow(1 - t, 3)));
       if (t < 1) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [inView, value, duration, reduced]);
-  return <span ref={ref} className="num">{format(shown)}</span>;
+    const done = window.setTimeout(() => setShown(value), duration + 100); // rAF pauses in background tabs
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(done); };
+  }, [value, duration, reduced]);
+  return <span className="num">{format(shown)}</span>;
 }
 
 export function Segmented<T extends string | number>({ id, value, options, onChange, label }: { id: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
@@ -88,13 +90,14 @@ export function GateChip({ status }: { status: string }) {
   );
 }
 
-export function ErrorState({ error }: { error: unknown }) {
+export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   return (
     <div className="state state-error" role="alert">
       <CircleAlert size={18} aria-hidden />
       <div>
         <strong>Couldn’t load this data</strong>
         <p>{error instanceof Error ? error.message : String(error)}</p>
+        {onRetry && <button type="button" className="btn btn-secondary mt" onClick={onRetry}>Try again</button>}
       </div>
     </div>
   );

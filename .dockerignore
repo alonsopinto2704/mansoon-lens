@@ -1,0 +1,13 @@
+.git
+.vendor
+.pnpm-store
+.pytest_cache
+**/__pycache__
+**/node_modules
+frontend/dist
+backend/data/*.db
+backend/data/*.parquet
+backend/data/*.joblib
+backend/data/verification.json
+backend/data/live.json
+backend/data/districts.geojson

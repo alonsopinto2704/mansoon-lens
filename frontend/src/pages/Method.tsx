@@ -8,9 +8,9 @@ const steps = [
   { icon: Database, title: 'Inputs', text: 'District forecasts from a numerical weather model, observed rainfall, and geographic and atmospheric predictors — moisture, wind, pressure, terrain and distance to the coast.' },
   { icon: CheckCheck, title: 'Align & quality-check', text: 'Forecasts and observations are matched by district and by the 08:30 IST rain day. Units, ranges and missing values are validated before anything is trained.' },
   { icon: Layers, title: 'Detect the regime', text: 'A calibrated classifier assigns each district-day a probability for each of the six monsoon regimes. The probabilities always sum to one.' },
-  { icon: GitMerge, title: 'Blend the correction', text: 'Each regime has its own quantile models for low (P10), median (P50) and high (P90) rainfall. They are blended using the regime probabilities, so transitions stay smooth.' },
-  { icon: BellRing, title: 'Estimate heavy-rain chances', text: 'Separate calibrated models give the probability of crossing 64.5, 115.6 and 204.5 mm in 24 hours — the IMD heavy, very heavy and extremely heavy thresholds.' },
-  { icon: ShieldCheck, title: 'Pass the gate', text: 'On the held-out season, a regime’s correction must beat both the raw forecast and a single global correction on RMSE and CSI, with a positive lower 95% bootstrap bound.' },
+  { icon: GitMerge, title: 'Blend the correction', text: 'Each regime has its own models for low (P10), best-estimate (conditional mean) and high (P90) rainfall, trained on every row weighted by that regime’s probability. They are blended using the regime probabilities, so transitions stay smooth.' },
+  { icon: BellRing, title: 'Estimate heavy-rain chances', text: 'Calibrated models that take the regime probabilities as inputs give the chance of crossing 64.5, 115.6 and 204.5 mm in 24 hours — the IMD heavy, very heavy and extremely heavy thresholds.' },
+  { icon: ShieldCheck, title: 'Pass the gate', text: 'On the held-out season, a regime’s correction must beat both the raw forecast and a single global correction (one raw-to-observed mapping per lead time) on RMSE and CSI, with a positive lower 95% bootstrap bound.' },
   { icon: MapPinned, title: 'Serve the district product', text: 'Where the gate passed, the corrected value is served. Everywhere else the raw forecast is served, and the reason is shown alongside it.' },
 ];
 
@@ -21,9 +21,9 @@ const details = [
 ];
 
 const limits = [
-  'The sample dataset is simulated: district locations are approximate points, not official boundaries, and rainfall and predictors are generated.',
-  'Scores describe performance on that sample, not skill on a real monsoon season.',
-  'Operational use would need licensed NCMRWF, IMD and ERA5 inputs, real district geometry, and independent validation with meteorologists.',
+  'The training and verification season is simulated over all 781 real districts: rainfall and predictors are generated, so scores describe that sample, not real-world skill.',
+  'Live mode runs today’s real Open-Meteo NWP rainfall through the same models. Those corrected values are unverified, and Open-Meteo rain days run 00–24 IST rather than the IMD 08:30 IST day.',
+  'Operational use would need NCMRWF NCUM forecasts, IMD gridded observations for training, and independent validation with meteorologists.',
 ];
 
 const references = [

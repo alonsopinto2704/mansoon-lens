@@ -10,12 +10,13 @@ import { ErrorState, GateChip, LoadingBlock, PageHeader, Reveal, Section, ease }
 export default function RegimesPage() {
   const theme = useResolvedTheme();
   const ct = chartTheme(theme);
-  const date = useForecastStore((s) => s.date);
   const verification = useVerification();
   const forecast = useForecast();
   const [open, setOpen] = useState<string | null>(null);
   const v = verification.data;
   const rows = forecast.data?.items;
+  const date = forecast.data?.date;
+  const live = useForecastStore((s) => s.source) === 'live';
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
     rows?.forEach((r) => { out[r.dominant_regime] = (out[r.dominant_regime] ?? 0) + 1; });
@@ -32,7 +33,7 @@ export default function RegimesPage() {
         <>
           {total > 0 && (
             <Reveal className="card mix-card">
-              <div className="mix-head"><span className="label">Most likely regime by district</span><span className="muted small">{date && formatDate(date)} · {total} districts</span></div>
+              <div className="mix-head"><span className="label">Most likely regime by district</span><span className="muted small">{live ? 'Live NWP' : 'Held-out season'} · {date && formatDate(date)} · {total} districts</span></div>
               <div className="mix-bar" role="img" aria-label={v.regimes.map((r) => `${r} ${counts[r] ?? 0}`).join(', ')}>
                 {v.regimes.filter((r) => counts[r]).map((r) => (
                   <m.span key={r} style={{ background: regimeColor(r, theme) }} initial={{ flexGrow: 0 }} animate={{ flexGrow: counts[r] }} transition={{ duration: 0.8, ease }} title={`${r}: ${counts[r]}`} />

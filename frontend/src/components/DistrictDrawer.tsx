@@ -2,17 +2,17 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
 import { Info, X } from 'lucide-react';
-import { gateReason, get, mm, pct, regimeColor, type District } from '../lib';
+import { formatDate, gateReason, get, mm, pct, regimeColor, type District } from '../lib';
 import { useResolvedTheme } from '../store';
 import { Bar, ErrorState, GateChip, LoadingBlock, ease } from './ui';
 
 const driverLabels: Record<string, string> = { moisture: 'Moisture index', wind: 'Wind index', mslp: 'Pressure anomaly', terrain_m: 'Terrain (m)', coast_km: 'Distance to coast (km)' };
 
-function Content({ id, date, lead }: { id: string; date: string; lead: number }) {
+function Content({ id, date, lead, live }: { id: string; date: string; lead: number; live?: District }) {
   const theme = useResolvedTheme();
-  const detail = useQuery({ queryKey: ['district', id, date, lead], queryFn: () => get<District>(`/districts/${id}?date=${date}&lead=${lead}`) });
-  if (detail.isError) return <div className="drawer-body"><ErrorState error={detail.error} /></div>;
-  const item = detail.data;
+  const detail = useQuery({ queryKey: ['district', id, date, lead], queryFn: () => get<District>(`/districts/${id}?date=${date}&lead=${lead}`), enabled: !live });
+  if (!live && detail.isError) return <div className="drawer-body"><ErrorState error={detail.error} /></div>;
+  const item = live ?? detail.data;
   if (!item) return <div className="drawer-body"><LoadingBlock rows={8} label="Loading district forecast" /></div>;
   const span = Math.max(item.corrected_p90, 1);
   return (
@@ -32,11 +32,32 @@ function Content({ id, date, lead }: { id: string; date: string; lead: number })
           </div>
           <div className="range-labels">
             <span>Low (P10)<b className="num">{mm(item.corrected_p10)}</b></span>
-            <span>Median<b className="num">{mm(item.corrected_p50)}</b></span>
+            <span>Best estimate<b className="num">{mm(item.corrected_p50)}</b></span>
             <span>High (P90)<b className="num">{mm(item.corrected_p90)}</b></span>
           </div>
         </div>
       </div>
+
+      {item.observed_mm !== null && item.season && <div className="drawer-section">
+        <h3>Forecast vs. what fell</h3>
+        <div className="risk-grid">
+          <div><span>Raw model</span><strong className="num">{item.raw_mm.toFixed(1)}</strong><small>mm</small></div>
+          <div><span>Served</span><strong className="num">{item.served_mm.toFixed(1)}</strong><small>mm</small></div>
+          <div><span>Observed</span><strong className="num">{item.observed_mm?.toFixed(1)}</strong><small>mm · held-out</small></div>
+        </div>
+        <p className="muted small mt">
+          Over the held-out season at day +{lead}, this district’s error was <b className="num">{mm(item.season.rmse_served)}</b> served vs <b className="num">{mm(item.season.rmse_raw)}</b> raw (RMSE, {item.season.days} days, {item.season.heavy_days} heavy-rain days).
+        </p>
+      </div>}
+      {live && <div className="drawer-section">
+        <h3>Raw NWP vs. served</h3>
+        <div className="risk-grid">
+          <div><span>Raw NWP</span><strong className="num">{item.raw_mm.toFixed(1)}</strong><small>mm · Open-Meteo</small></div>
+          <div><span>Served</span><strong className="num">{item.served_mm.toFixed(1)}</strong><small>mm</small></div>
+          <div><span>Change</span><strong className="num">{(item.served_mm - item.raw_mm).toFixed(1)}</strong><small>mm</small></div>
+        </div>
+        <p className="muted small mt">Live run: correction is unverified on real observations.</p>
+      </div>}
 
       <div className="drawer-section">
         <h3>Heavy-rain chance</h3>
@@ -68,40 +89,65 @@ function Content({ id, date, lead }: { id: string; date: string; lead: number })
   );
 }
 
-export function DistrictDrawer({ id, name, state, date, lead, onClose }: { id: string | null; name?: string; state?: string; date: string; lead: number; onClose: () => void }) {
+export function DistrictDrawer({ id, name, state, date, lead, live, onClose }: { id: string | null; name?: string; state?: string; date: string; lead: number; live?: District; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const open = Boolean(id);
   useEffect(() => {
-    if (!id) return;
-    returnFocus.current ??= document.activeElement as HTMLElement;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCloseRef.current();
+    if (!open) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+      }
+      if (e.key !== 'Tab') return;
+      const targets = Array.from(drawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button, input, select, textarea, [tabindex]',
+      ) ?? []).filter((element) => element.tabIndex >= 0 && !element.matches(':disabled') && element.getClientRects().length > 0);
+      const first = targets[0];
+      const last = targets[targets.length - 1];
+      if (!first) {
+        e.preventDefault();
+        drawerRef.current?.focus();
+      } else if (!drawerRef.current?.contains(document.activeElement) || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+    const onFocus = (e: FocusEvent) => {
+      if (e.target instanceof Node && !drawerRef.current?.contains(e.target)) closeRef.current?.focus({ preventScroll: true });
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [id]);
-  useEffect(() => {
-    if (id) return;
-    returnFocus.current?.focus();
-    returnFocus.current = null;
-  }, [id]);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('focusin', onFocus);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, [open]);
 
   return (
     <AnimatePresence>
       {id && (
         <>
           <m.div key="scrim" className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} />
-          <m.aside key="drawer" className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title"
+          <m.aside ref={drawerRef} tabIndex={-1} key="drawer" className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title"
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 380, damping: 40 }}>
             <div className="drawer-head">
               <div>
                 <h2 id="drawer-title">{name ?? 'District'}</h2>
-                <p>{state}{state ? ' · ' : ''}Day +{lead}</p>
+                <p>{state}{state ? ' · ' : ''}{date && `${formatDate(date)} · `}Day +{lead}</p>
               </div>
               <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Close district details"><X size={18} /></button>
             </div>
-            <Content id={id} date={date} lead={lead} />
+            <Content id={id} date={date} lead={lead} live={live} />
           </m.aside>
         </>
       )}

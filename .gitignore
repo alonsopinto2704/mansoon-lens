@@ -11,4 +11,10 @@ __pycache__/
 *.tsbuildinfo
 backend/data/verification.json
 backend/data/districts.geojson
+
 .env
+backend/data/live.json
+research_notes/
+reports/
+backend/data/live.tmp
+.claude/

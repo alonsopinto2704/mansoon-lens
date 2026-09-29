@@ -11,47 +11,68 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(__file__).resolve().parent
 REGIMES = ["Active", "Break", "Depression", "Orographic", "Coastal", "Western disturbance"]
-STATES = [
-    ("Kerala", 9.9, 76.5), ("Karnataka", 14.8, 75.4), ("Maharashtra", 19.4, 75.2),
-    ("Goa", 15.4, 73.9), ("Gujarat", 22.7, 72.7), ("Rajasthan", 26.4, 74.3),
-    ("Punjab", 31.0, 75.4), ("Himachal Pradesh", 31.8, 77.2),
-    ("Uttar Pradesh", 26.7, 80.9), ("Bihar", 25.8, 85.7),
-    ("West Bengal", 23.3, 87.8), ("Odisha", 20.2, 85.8),
-    ("Andhra Pradesh", 16.2, 80.8), ("Tamil Nadu", 11.1, 78.3),
-    ("Madhya Pradesh", 23.5, 78.6), ("Chhattisgarh", 21.4, 82.1),
-    ("Assam", 26.2, 92.9), ("Meghalaya", 25.5, 91.4),
-    ("Jharkhand", 23.6, 85.3), ("Telangana", 18.0, 79.3),
-]
-NAMES = {
-    "Kerala": ["Alappuzha", "Ernakulam", "Kozhikode"],
-    "Karnataka": ["Udupi", "Dakshina Kannada", "Mysuru"],
-    "Maharashtra": ["Pune", "Mumbai", "Ratnagiri"],
-    "Goa": ["North Goa", "South Goa"], "Gujarat": ["Surat", "Valsad", "Ahmedabad"],
-    "Rajasthan": ["Jaipur", "Udaipur", "Jodhpur"], "Punjab": ["Amritsar", "Ludhiana", "Patiala"],
-    "Himachal Pradesh": ["Shimla", "Kullu", "Mandi"],
-    "Uttar Pradesh": ["Lucknow", "Varanasi", "Prayagraj"], "Bihar": ["Patna", "Gaya", "Muzaffarpur"],
-    "West Bengal": ["Kolkata", "Darjeeling", "Howrah"], "Odisha": ["Bhubaneswar", "Cuttack", "Puri"],
-    "Andhra Pradesh": ["Visakhapatnam", "Guntur", "Nellore"], "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai"],
-    "Madhya Pradesh": ["Bhopal", "Indore", "Jabalpur"], "Chhattisgarh": ["Raipur", "Bilaspur", "Durg"],
-    "Assam": ["Guwahati", "Dibrugarh", "Jorhat"], "Meghalaya": ["Shillong", "Tura", "Jowai"],
-    "Jharkhand": ["Ranchi", "Dhanbad", "Bokaro"], "Telangana": ["Hyderabad", "Warangal", "Nizamabad"],
-}
+GEO = DATA / "geo"
+# Coarse mainland coastline (lon, lat), Kutch -> Kerala -> Sundarbans; only used for synthetic coast distance.
+COAST = np.array([(68.4, 23.6), (70.0, 22.4), (72.6, 21.1), (72.8, 19.0), (73.3, 17.0), (73.8, 15.4), (74.8, 12.9),
+                  (75.8, 11.2), (76.6, 8.9), (77.5, 8.1), (78.2, 8.9), (79.3, 10.3), (79.8, 11.9), (80.3, 13.1),
+                  (80.1, 15.5), (82.3, 16.6), (83.9, 18.0), (85.8, 19.8), (87.0, 21.5), (88.6, 21.6), (89.1, 21.7)])
+ISLANDS = {"Andaman and Nicobar Islands", "Lakshadweep"}
+HILL_STATES = {"Jammu and Kashmir", "Ladakh", "Himachal Pradesh", "Uttarakhand", "Sikkim", "Arunachal Pradesh",
+               "Meghalaya", "Nagaland", "Manipur", "Mizoram"}
+
+
+def _centroid(geometry):
+    """Area-weighted centroid of the largest polygon (enough for a synthetic location)."""
+    polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+    ring = np.asarray(max(polygons, key=lambda poly: len(poly[0]))[0])
+    x, y = ring[:, 0], ring[:, 1]
+    cross = x[:-1] * y[1:] - x[1:] * y[:-1]
+    area = cross.sum() / 2
+    if abs(area) < 1e-12:
+        return float(x.mean()), float(y.mean())
+    return float(((x[:-1] + x[1:]) * cross).sum() / (6 * area)), float(((y[:-1] + y[1:]) * cross).sum() / (6 * area))
+
+
+def _coast_km(lon, lat):
+    dense = np.concatenate([np.linspace(a, b, 25) for a, b in zip(COAST[:-1], COAST[1:])])
+    return float(np.min(np.hypot((dense[:, 0] - lon) * np.cos(np.radians(lat)), dense[:, 1] - lat)) * 111)
+
+
+def _smooth_field(lon, lat, days, rng, waves=8):
+    """Unit-variance random field per day, smooth over ~3-9 degrees (sum of random plane waves)."""
+    k = 2 * np.pi / rng.uniform(3, 9, (days, waves))
+    theta = rng.uniform(0, 2 * np.pi, (days, waves))
+    phase = rng.uniform(0, 2 * np.pi, (days, waves))
+    arg = lon[:, None, None] * (k * np.cos(theta)) + lat[:, None, None] * (k * np.sin(theta)) + phase
+    return np.sqrt(2 / waves) * np.cos(arg).sum(axis=2)  # (districts, days)
+
+
+def load_districts(count=None):
+    """Real district names and centroids from the bundled boundary file; `count` keeps an even subset."""
+    features = json.loads((GEO / "districts.geojson").read_text(encoding="utf-8"))["features"]
+    if count and count < len(features):
+        features = [features[i] for i in np.linspace(0, len(features) - 1, count).round().astype(int)]
+    return features
 
 
 def generate(count: int | None = None) -> pd.DataFrame:
     cfg = yaml.safe_load((ROOT / "config/settings.yaml").read_text())
-    count = count or cfg["district_count"]
+    count = count or cfg.get("district_count")
     rng = np.random.default_rng(cfg["seed"])
     districts = []
-    for i in range(count):
-        state, lat, lon = STATES[i % len(STATES)]
-        lat = float(np.clip(lat + rng.normal(0, 0.55), 8, 36))
-        lon = float(np.clip(lon + rng.normal(0, 0.65), 68, 98))
-        coast = state in {"Kerala", "Karnataka", "Maharashtra", "Goa", "Gujarat", "West Bengal", "Odisha", "Andhra Pradesh", "Tamil Nadu"}
-        mountain = state in {"Kerala", "Karnataka", "Maharashtra", "Himachal Pradesh", "Meghalaya"}
-        district_number = i // len(STATES)
-        district_name = NAMES[state][district_number] if district_number < len(NAMES[state]) else f"{state} district {district_number+1}"
-        districts.append(dict(district_id=f"D{i+1:04d}", district=district_name, state=state, lat=lat, lon=lon, terrain_m=float(rng.uniform(350, 1900) if mountain else rng.uniform(20, 400)), coast_km=float(rng.uniform(5, 90) if coast else rng.uniform(100, 850)), coastal=int(coast), orographic=int(mountain)))
+    for feature in load_districts(count):
+        props = feature["properties"]
+        lon, lat = _centroid(feature["geometry"])
+        coast_km = 5.0 if props["state"] in ISLANDS else _coast_km(lon, lat)
+        coast = coast_km < 120
+        ghats = coast_km < 160 and lon < 77.6 and lat < 21.5
+        mountain = props["state"] in HILL_STATES or ghats
+        # Synthetic monsoon climatology: wet west coast and north-east, dry north-west and Tamil Nadu interior.
+        wet = 1.0 * (1.45 if ghats else 1) * (1.35 if lon > 89 else 1) * (0.45 if lon < 76 and 23 < lat < 31 else 1) * (0.6 if lat < 13.5 and lon > 77.5 and props["state"] not in ISLANDS else 1)
+        districts.append(dict(district_id=props["district_id"], district=props["district"], state=props["state"], lat=lat, lon=lon,
+                              terrain_m=float(rng.uniform(600, 2600) if props["state"] in HILL_STATES else rng.uniform(350, 1200) if ghats else rng.uniform(20, 450)),
+                              coast_km=coast_km, coastal=int(coast), orographic=int(mountain), wet=wet))
+    count = len(districts)
     dist = pd.DataFrame(districts)
     dates = pd.DatetimeIndex(np.concatenate([pd.date_range(f"{year}-06-01", f"{year}-09-30").values for year in cfg["seasons"]]))
     n, days = count, len(dates)
@@ -59,8 +80,18 @@ def generate(count: int | None = None) -> pd.DataFrame:
     daily = np.zeros(days, dtype=int)
     for t in range(1, days):
         daily[t] = daily[t-1] if rng.random() < 0.72 else rng.choice([0, 1, 2, 5], p=[.47, .28, .17, .08])
+    daily[daily == 5] = 0
+    # Western disturbances are a separate mid-latitude process that reaches the north on some days.
+    wd = np.zeros(days, dtype=bool)
+    for t in range(1, days):
+        wd[t] = rng.random() < (.75 if wd[t-1] else .07)
     local = np.tile(daily, (n, 1))
     for i, d in enumerate(districts):
+        # Depressions track the central/east monsoon trough; western disturbances reach only the north.
+        if not (17 <= d["lat"] <= 27 and d["lon"] >= 74):
+            local[i, local[i] == 2] = 0
+        if d["lat"] >= 28.5:
+            local[i, wd] = 5
         overrides = rng.random(days)
         local[i, (overrides < .18) & (d["orographic"] == 1)] = 3
         local[i, (overrides >= .18) & (overrides < .34) & (d["coastal"] == 1)] = 4
@@ -68,9 +99,12 @@ def generate(count: int | None = None) -> pd.DataFrame:
     district_idx = np.repeat(np.arange(n), days)
     date_idx = np.tile(np.arange(days), n)
     means = np.array([27, 5, 67, 48, 37, 17])[regime]
-    means = means * (1 + .18 * dist.orographic.to_numpy()[district_idx])
-    truth = rng.gamma(1.35, means / 1.35)
-    truth[rng.random(len(truth)) < .21] *= .12
+    means = means * (1 + .18 * dist.orographic.to_numpy()[district_idx]) * dist.wet.to_numpy()[district_idx]
+    # Spatially coherent rain: a smooth daily field modulates the regime mean, so neighbours rain together.
+    lon, lat = dist.lon.to_numpy(), dist.lat.to_numpy()
+    field = _smooth_field(lon, lat, days, rng).reshape(-1)
+    truth = rng.gamma(2.0, means * np.exp(.55 * field - .151) / 2.0)
+    truth[(field < -1.2) | (rng.random(len(truth)) < .08)] *= .12
     extreme = rng.random(len(truth)) < .004
     truth[extreme] += rng.exponential(90, extreme.sum())
     moisture = np.array([.9, -.8, 1.3, .6, .7, -.2])[regime] + rng.normal(0, .75, len(regime))
@@ -82,16 +116,17 @@ def generate(count: int | None = None) -> pd.DataFrame:
     for lead in cfg["lead_days"]:
         frame = base.copy()
         frame["lead"] = lead
-        frame["raw_mm"] = np.maximum(0, truth * bias[regime] + rng.normal(1.5 * lead, 7 + 2.5 * lead, len(truth)))
+        # NWP error is itself spatially coherent (displaced systems) and grows with lead.
+        error_field = _smooth_field(lon, lat, days, rng).reshape(-1)
+        frame["raw_mm"] = np.maximum(0, truth * bias[regime] * np.exp((.2 + .08 * lead) * error_field) + rng.normal(1.5 * lead, 4 + 2 * lead, len(truth)))
         records.append(frame)
     result = pd.concat(records, ignore_index=True)
     DATA.mkdir(parents=True, exist_ok=True)
     result.to_parquet(DATA / "synthetic.parquet", index=False)
     with sqlite3.connect(DATA / "monsoonlens.db") as db:
-        dist.to_sql("districts", db, if_exists="replace", index=False)
+        dist.drop(columns="wet").to_sql("districts", db, if_exists="replace", index=False)
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_district_id ON districts(district_id)")
-    (DATA / "districts.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"district_id": r["district_id"], "district": r["district"], "state": r["state"]}, "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]}} for r in districts]}))
-    print(f"Generated {len(result):,} forecast rows and {count} district points")
+    print(f"Generated {len(result):,} forecast rows for {count} districts")
     return result
 
 

@@ -1,6 +1,5 @@
 seed: 26080
-district_count: 96
-full_district_count: 700
+district_count: null  # null = all 781 districts in backend/data/geo; set a number for a quicker subset
 seasons: [2021, 2022, 2023, 2024, 2025]
 start_month_day: '06-01'
 end_month_day: '09-30'

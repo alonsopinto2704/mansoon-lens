@@ -4,13 +4,13 @@ import { ArrowRight, BellRing, CloudRain, Layers, MapPinned, ShieldCheck, Slider
 import { useMeta, useVerification } from '../data';
 import { modelColors, regimeColor } from '../lib';
 import { useResolvedTheme } from '../store';
-import { Bar, CountUp, GateChip, Reveal, Skeleton, ease } from '../components/ui';
+import { Bar, CountUp, ErrorState, GateChip, Reveal, Skeleton, ease } from '../components/ui';
 
 const MODELS = ['Raw', 'Global', 'Regime-aware'] as const;
 
 const features = [
   { icon: Layers, title: 'Regime detection', text: 'Every district-day gets calibrated probabilities across six monsoon regimes — from active spells to breaks and depressions.', to: '/regimes' },
-  { icon: SlidersHorizontal, title: 'Bias correction', text: 'Regime-specific quantile models are blended by those probabilities into a low, median and high rainfall estimate.', to: '/method' },
+  { icon: SlidersHorizontal, title: 'Bias correction', text: 'Regime-specific models are blended by those probabilities into a low, best-estimate and high rainfall value.', to: '/method' },
   { icon: BellRing, title: 'Heavy-rain chances', text: 'Calibrated probabilities of crossing the IMD heavy, very heavy and extremely heavy thresholds.', to: '/alerts' },
   { icon: ShieldCheck, title: 'Verified before served', text: 'A correction only goes live for a regime when held-out tests show it beats both the raw and a one-size-fits-all fix.', to: '/verification' },
 ];
@@ -30,7 +30,7 @@ function Preview() {
         <span className="label">Error where correction is live</span>
         <span className="muted small">RMSE · lower is better</span>
       </div>
-      {!v ? <div className="loading-block"><Skeleton height={40} /><Skeleton height={40} /><Skeleton height={40} /></div> : (
+      {verification.isError ? <div><ErrorState error={verification.error} /><button className="btn btn-secondary mt" onClick={() => verification.refetch()}>Try again</button></div> : !v ? <div className="loading-block"><Skeleton height={40} /><Skeleton height={40} /><Skeleton height={40} /></div> : (
         <div className="compare-groups">
           {shown.map((group) => {
             const max = Math.max(...MODELS.map((x) => rmse(group, x)), 1);
@@ -82,13 +82,14 @@ export default function Overview() {
 
   return (
     <div className="page overview">
+      <div className="overview-eyebrow"><span>MONSOON INTELLIGENCE</span><span>INDIA / SIH 2026</span></div>
       <section className="hero">
         <div className="hero-copy">
           <m.span className="pill" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
             <CloudRain size={14} aria-hidden /> Regime-aware rainfall post-processing
           </m.span>
           <m.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.05 }}>
-            Sharper district rainfall forecasts, <span className="accent-text">verified before they’re served.</span>
+            Every weather pattern.<br /><span className="accent-text">A clearer rainfall forecast.</span>
           </m.h1>
           <m.p className="lead" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.12 }}>
             MonsoonLens reads the weather pattern behind each forecast, corrects model rainfall for that pattern, and only publishes the correction where the evidence says it helps.
@@ -97,6 +98,7 @@ export default function Overview() {
             <Link className="btn btn-primary" to="/forecast"><MapPinned size={16} aria-hidden /> Open the forecast map</Link>
             <Link className="btn btn-ghost" to="/method">How it works <ArrowRight size={16} aria-hidden /></Link>
           </m.div>
+          <p className="hero-disclosure"><ShieldCheck size={15} aria-hidden /> Research demo · Verified on synthetic data</p>
         </div>
         <Preview />
       </section>
@@ -104,7 +106,7 @@ export default function Overview() {
       <section className="stats" aria-label="Key figures">
         {stats.map((s, i) => (
           <Reveal key={s.label} delay={i * 0.06} className="stat">
-            <strong>{typeof s.value === 'number' ? <CountUp value={s.value} /> : <Skeleton height={32} width={80} />}</strong>
+            <strong>{typeof s.value === 'number' ? <CountUp value={s.value} /> : (i === 0 ? meta.isError : verification.isError) ? <span aria-label="Unavailable">—</span> : <Skeleton height={32} width={80} />}</strong>
             <span>{s.label}</span>
           </Reveal>
         ))}
@@ -113,7 +115,7 @@ export default function Overview() {
       <section className="section">
         <Reveal className="section-head section-head-center">
           <div>
-            <h2>From raw model output to a forecast you can act on</h2>
+            <h2>Understand the pattern. See the difference.</h2>
             <p>Four steps, each one visible and measurable.</p>
           </div>
         </Reveal>
@@ -121,7 +123,7 @@ export default function Overview() {
           {features.map(({ icon: Icon, title, text, to }, i) => (
             <Reveal key={title} delay={i * 0.07}>
               <Link to={to} className="feature card card-hover">
-                <span className="feature-icon"><Icon size={20} aria-hidden /></span>
+                <div className="feature-top"><span className="feature-icon"><Icon size={20} aria-hidden /></span><span className="feature-number">0{i + 1}</span></div>
                 <h3>{title}</h3>
                 <p>{text}</p>
                 <span className="feature-link">Learn more <ArrowRight size={14} aria-hidden /></span>
@@ -154,7 +156,7 @@ export default function Overview() {
       <Reveal as="section" className="cta card">
         <div>
           <h2>Explore today’s district forecast</h2>
-          <p>Pick a date and lead time, compare raw and corrected rainfall, and open any district for its range, regime and heavy-rain chances.</p>
+          <p>Today’s live NWP run for all 781 districts, days +1 to +5: compare raw and corrected rainfall, and open any district for its range, regime and heavy-rain chances.</p>
         </div>
         <Link className="btn btn-primary" to="/forecast">Open the map <ArrowRight size={16} aria-hidden /></Link>
       </Reveal>

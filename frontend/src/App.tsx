@@ -133,7 +133,7 @@ export default function App() {
         <div className="footer-inner">
           <div className="footer-brand">
             <Link to="/" className="brand"><Logo /><span>MonsoonLens</span></Link>
-            <p>Regime-aware post-processing for district rainfall forecasts. Figures are computed from a sample dataset and are not an official forecast — refer to IMD for warnings.</p>
+            <p>Regime-aware post-processing for district rainfall forecasts. Live raw rainfall comes from Open-Meteo’s global NWP; the correction is trained and verified on a sample dataset. Not an official forecast — refer to IMD for warnings.</p>
           </div>
           <nav className="footer-nav" aria-label="Footer">
             {nav.slice(1).map(({ to, label }) => <Link key={to} to={to}>{label}</Link>)}

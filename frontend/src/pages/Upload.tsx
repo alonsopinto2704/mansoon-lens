@@ -1,10 +1,10 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { AnimatePresence, m } from 'motion/react';
 import { ArrowRight, Download, FileSpreadsheet, UploadCloud, X } from 'lucide-react';
-import { mm } from '../lib';
+import { mm, pct } from '../lib';
 import { ErrorState, GateChip, PageHeader, Section, ease } from '../components/ui';
 
-type Row = { row: number; dominant_regime: string; raw_mm: number; p10: number; p50: number; p90: number; served_mm: number; gate_status: string };
+type Row = { row: number; dominant_regime: string; raw_mm: number; p10: number; p50: number; p90: number; served_mm: number; gate_status: string; prob_64_5: number };
 
 const columns = [
   ['raw_mm', 'Model rainfall, mm/day'], ['lead', 'Lead time, 1–5 days'], ['day', 'Day of year'], ['moisture', 'Moisture index'], ['wind', 'Wind index'],
@@ -20,18 +20,30 @@ export default function UploadPage() {
   const [results, setResults] = useState<Row[]>([]);
   const input = useRef<HTMLInputElement>(null);
 
-  function choose(f: File | null | undefined) { setFile(f ?? null); setError(null); setResults([]); }
+  function choose(f: File | null | undefined) {
+    if (busy) return;
+    setResults([]);
+    setFile(null);
+    setError(null);
+    if (f && (!f.name.toLowerCase().endsWith('.csv') || f.size > 2 * 1024 * 1024 || f.size === 0)) {
+      setError(new Error('Choose a nonempty CSV file smaller than 2 MB.'));
+      if (input.current) input.current.value = '';
+      return;
+    }
+    setFile(f ?? null);
+  }
   function onDrop(e: DragEvent) { e.preventDefault(); setDrag(false); choose(e.dataTransfer.files[0]); }
 
   async function submit() {
-    if (!file) return;
+    if (!file || busy) return;
     setBusy(true); setError(null); setResults([]);
     const body = new FormData();
     body.append('file', file);
     try {
       const response = await fetch('/api/v1/upload', { method: 'POST', body });
-      const json = await response.json();
-      if (!response.ok) throw new Error(`${json.error}${json.details?.length ? `: ${json.details.join(', ')}` : ''}`);
+      const json = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(`${json?.error || `Upload failed (${response.status}). Please try again.`}${json?.details?.length ? `: ${json.details.join(', ')}` : ''}`);
+      if (!Array.isArray(json?.items)) throw new Error('The server returned an invalid result. Please try again.');
       setResults(json.items);
     } catch (e) { setError(e instanceof Error ? e : new Error(String(e))); } finally { setBusy(false); }
   }
@@ -44,20 +56,20 @@ export default function UploadPage() {
         <div className="card pad">
           <div className={`dropzone ${drag ? 'is-drag' : ''} ${file ? 'has-file' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
-            <input ref={input} id="forecast-csv" className="sr-only" type="file" accept=".csv,text/csv" onChange={(e) => choose(e.target.files?.[0])} />
+            <input ref={input} id="forecast-csv" className="sr-only" type="file" disabled={busy} accept=".csv,text/csv" onChange={(e) => choose(e.target.files?.[0])} />
             <AnimatePresence mode="wait" initial={false}>
               {file ? (
                 <m.div key="file" className="dropzone-file" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.2, ease }}>
                   <FileSpreadsheet size={28} aria-hidden />
                   <div><strong>{file.name}</strong><small className="muted block">{(file.size / 1024).toFixed(1)} KB</small></div>
-                  <button className="icon-btn" aria-label="Remove file" onClick={() => { choose(null); if (input.current) input.current.value = ''; }}><X size={16} /></button>
+                  <button className="icon-btn" disabled={busy} aria-label="Remove file" onClick={() => { choose(null); if (input.current) input.current.value = ''; }}><X size={16} /></button>
                 </m.div>
               ) : (
                 <m.div key="empty" className="dropzone-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
                   <m.span className="dropzone-icon" animate={drag ? { y: -4, scale: 1.08 } : { y: 0, scale: 1 }}><UploadCloud size={26} aria-hidden /></m.span>
                   <strong>Drop a CSV file here</strong>
                   <p className="muted small">Up to 1,000 rows and 2 MB</p>
-                  <label className="btn btn-secondary" htmlFor="forecast-csv">Choose file</label>
+                  <button type="button" className="btn btn-secondary" onClick={() => input.current?.click()}>Choose file</button>
                 </m.div>
               )}
             </AnimatePresence>
@@ -84,10 +96,10 @@ export default function UploadPage() {
             <div className="card table-card">
               <div className="table-scroll">
                 <table className="table">
-                  <thead><tr><th>Row</th><th>Regime</th><th className="align-right">Raw</th><th className="align-right">Low · Median · High</th><th className="align-right">Served</th><th>Correction</th></tr></thead>
+                  <thead><tr><th>Row</th><th>Regime</th><th className="align-right">Raw</th><th className="align-right">Low · Best · High</th><th className="align-right">Served</th><th className="align-right">Heavy-rain chance</th><th>Correction</th></tr></thead>
                   <tbody>
                     {results.map((r) => (
-                      <tr key={r.row}><td className="num">{r.row}</td><td>{r.dominant_regime}</td><td className="num align-right">{mm(r.raw_mm)}</td><td className="num align-right">{[r.p10, r.p50, r.p90].map((x) => x.toFixed(1)).join(' · ')} mm</td><td className="num align-right"><strong>{mm(r.served_mm)}</strong></td><td><GateChip status={r.gate_status} /></td></tr>
+                      <tr key={r.row}><td className="num">{r.row}</td><td>{r.dominant_regime}</td><td className="num align-right">{mm(r.raw_mm)}</td><td className="num align-right">{[r.p10, r.p50, r.p90].map((x) => x.toFixed(1)).join(' · ')} mm</td><td className="num align-right"><strong>{mm(r.served_mm)}</strong></td><td className="num align-right">{pct(r.prob_64_5)}</td><td><GateChip status={r.gate_status} /></td></tr>
                     ))}
                   </tbody>
                 </table>

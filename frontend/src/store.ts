@@ -3,10 +3,11 @@ import { create } from 'zustand';
 import type { Theme } from './lib';
 
 type ThemePref = Theme | 'system';
-type Layer = 'raw' | 'corrected' | 'diff';
+export type Layer = 'corrected' | 'raw' | 'observed' | 'diff' | 'probability' | 'regime';
+export type Source = 'live' | 'season';
 type State = {
-  date: string; lead: number; layer: Layer; theme: ThemePref;
-  setDate: (date: string) => void; setLead: (lead: number) => void; setLayer: (layer: Layer) => void; setTheme: (theme: ThemePref) => void;
+  source: Source; date: string; lead: number; layer: Layer; theme: ThemePref;
+  setSource: (source: Source) => void; setDate: (date: string) => void; setLead: (lead: number) => void; setLayer: (layer: Layer) => void; setTheme: (theme: ThemePref) => void;
 };
 
 function storedTheme(): ThemePref {
@@ -17,8 +18,8 @@ function storedTheme(): ThemePref {
 }
 
 export const useForecastStore = create<State>((set) => ({
-  date: '', lead: 1, layer: 'corrected', theme: storedTheme(),
-  setDate: (date) => set({ date }), setLead: (lead) => set({ lead }), setLayer: (layer) => set({ layer }),
+  source: 'live', date: '', lead: 1, layer: 'corrected', theme: storedTheme(),
+  setSource: (source) => set((s) => ({ source, layer: source === 'live' && s.layer === 'observed' ? 'corrected' : s.layer })), setDate: (date) => set({ date }), setLead: (lead) => set({ lead }), setLayer: (layer) => set({ layer }),
   setTheme: (theme) => {
     try { if (theme === 'system') localStorage.removeItem('ml-theme'); else localStorage.setItem('ml-theme', theme); } catch { /* storage unavailable */ }
     set({ theme });

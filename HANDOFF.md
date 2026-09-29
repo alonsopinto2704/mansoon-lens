@@ -8,20 +8,19 @@ Updated: 2026-09-29. Update this file after material code, data, test, or deploy
 
 Build the attached MonsoonLens brief (SIH 2026, PS 26080) as a runnable local web demo. The site states in its footer (and on the alerts page) that figures come from a sample dataset and are not an official forecast; no hackathon, problem-statement or team labels appear in the UI. Every displayed metric must be computed from generated data. Blend corrections with all six regime probabilities. Serve a corrected value for a regime only if held-out verification improves both RMSE and 64.5 mm CSI over **both** raw and global baselines with a positive 95% bootstrap interval; otherwise serve raw and expose the reason.
 
-## Current state
+## Current state (2026-09-29, second pass)
 
-- Flask API, seeded data generator, validation, LightGBM training and calibration, verification gate and report, CSV upload, seven React pages, tests, CI, Dockerfiles, Compose, and documentation are implemented.
-- Frontend (2026-09-29 redesign): top navigation with light/dark/system theme, `motion` animations (route transitions, sliding nav/segmented indicators, district drawer, count-ups; honours reduced motion), code-split routes, CARTO light/dark basemaps, validated categorical chart palette, single-hue rainfall ramp and diverging change ramp. Pages: Overview, Forecast, Alerts, Regimes, Verification, How it works (`/method`; `/pipeline` redirects), Upload. Source is split into `src/pages/*`, `src/components/*`, `src/data.ts`.
-- The default profile in `config/settings.yaml` creates 96 synthetic district points, five June–September seasons, and leads 1–5: 292,800 generated rows. `python -m backend.data.generate_synthetic --districts 700` creates the larger profile, followed by validation and retraining. The points are **not** real polygons.
-- Latest local verification used 42,000 training rows from 2021–2023, 2024 for calibration, and 58,560 held-out 2025 rows. Active and Orographic passed the gate; Break, Depression, Coastal, and Western disturbance serve raw. These are synthetic-sample results, not forecast-skill claims.
-- Backend suite: 12 passing pytest tests, including API and upload validation. Frontend suite: 2 passing Vitest tests; production build passes without bundle-size warnings. Generated artifacts in `backend/data/` are ignored by Git and should be regenerated in a clean clone.
-- Browser QA (after the redesign, Playwright/Chromium) covered all seven routes in light and dark themes at 1440 px and 390 px, the district drawer (open, Escape to close) and the mobile menu; no horizontal overflow or app console errors. Earlier QA covered all routes, desktop and 390 px mobile layout, map tile loading, empty alert filters, and console errors. No horizontal overflow or console errors were found. The verification page shows computed FSS at 1, 3, and 5 nearest-district neighbourhoods.
-- `docker compose up --build` is the one-command demo path. It builds both services and initializes missing data/models in the API container. The Docker CLI is unavailable on this development host, so Compose startup itself has **not** been executed here. The frontend container's Vite proxy is rewritten to use the Compose `api` hostname; the host development proxy retains localhost.
-- API base: `http://localhost:5000/api/v1`; web: `http://localhost:5173`. `/api/v1/health` returns `ready` after initialization. The web may render before training is finished; refresh after health is ready.
+- Problem statement confirmed from sih.gov.in: SIH26080, "Regime-Aware AI Post-Processing of Monsoon Rainfall Forecasts", MoES/NCMRWF. Deliverables: regime classifier; bias-corrected forecast vs raw NWP; heavy-rain probability; district table/map; verification with RMSE, ETS, CSI, POD, FAR, FSS. All are covered.
+- **Real map:** 781 district polygons plus 36 state outlines (`backend/data/geo/`, datta07/INDIAN-SHAPEFILES, MIT; official J&K/Ladakh outline; Rajasthan merged to 41 districts). Served from `/api/v1/geo/<districts|states>` and drawn as a Leaflet choropleth with no tile server (the old CARTO tiles now need an API key). Layers: Served, Raw, Observed (season only), Change, Heavy-rain chance, Regime.
+- **Generator** uses all 781 real districts (2,382,050 rows), spatially coherent daily rain and error fields, climatology, depressions limited to the trough band and western disturbances to north of 28.5°N.
+- **Model changes:** the middle member is now a conditional-mean (L2) best estimate; regime models are soft-weighted by calibrated probabilities; the global baseline is raw rainfall and lead only (the "single method"); exceedance models take regime probabilities as inputs; training uses 150k rows. Latest gates: Break, Depression and Western disturbance **Corrected**; Active, Orographic and Coastal serve raw. Overall 64.5 mm: RMSE raw 28.3 / global 26.6 / regime-aware 24.8; CSI 0.523 / 0.549 / 0.583.
+- **Live feed** (`backend/live.py`, `/api/v1/live`): Open-Meteo best-match NWP for all districts, days +1 to +5, paced batches, three-hour cache in `backend/data/live.json`. The frontend defaults to Live and falls back automatically to the verified season if the feed fails.
+- **Deploy:** root `Dockerfile` (node build stage, then python-slim; trains at build time; gunicorn with one worker and eight threads on `$PORT`), `docker-compose.yml` on port 8000. Flask serves `frontend/dist` with SPA fallback, gzip for JSON, ProxyFix, and a 600/min default rate limit (10/hour on upload). Docker is **not installed on this host**, so the image build has not been executed; the same serving path was smoke-tested with `python -m backend.app`.
+- Tests: 15 backend pytest (including live-feature transform, live endpoint states, geo/forecast id match, gzip); 2 Vitest; `tsc -b` and `vite build` pass. A clean-checkout simulation (generate 150 districts, train, pytest) passes, and CI now does the same.
 
 ## Exact local commands on this Windows host
 
-Run PowerShell from the repository root. Bundled Python 3.12 and pnpm 11 are under `C:\Users\alonso\.cache\codex-runtimes\codex-primary-runtime\dependencies`. Python packages have been installed to `.vendor` and frontend packages to `frontend/node_modules` on this host.
+Run PowerShell from the repository root. Bundled Python 3.12 and Node are under `C:\Users\alonso\.cache\codex-runtimes\codex-primary-runtime\dependencies`. Python packages have been installed to `.vendor` and frontend packages to `frontend/node_modules` on this host.
 
 ```powershell
 $env:PYTHONPATH = '.vendor'
@@ -44,10 +43,10 @@ Start `python -m backend.app` in one terminal and `pnpm dev` from `frontend/` in
 
 ## Next checks and limitations
 
-1. Run `docker compose up --build` on a machine with Docker and verify first-start health plus browser/API integration. Docker is absent here.
-2. Complete a formal WCAG keyboard and reduced-motion audit and Lighthouse accessibility run. The browser QA above covered responsive layout and visible errors but was not a formal accessibility score.
-3. Add genuine district polygons and source-specific adapters only with suitable data rights and a new external validation campaign. Current adapters do not ingest NCUM/IMD/ERA5.
-4. The full 700-point profile has not been timed or checked for memory use. Default 96-point data are the practical demo profile.
+1. Run `docker build .` on a machine with Docker and check that `/api/v1/health` and `/api/v1/live` work in the container (the live feed needs outbound HTTPS).
+2. Live corrected values come from a model trained on synthetic predictors, with humidity, wind and pressure z-scored per day as stand-ins. Real skill needs NCUM forecasts plus IMD gridded truth.
+3. District changes after 2023 are unchecked, apart from Rajasthan's 2024 merge.
+4. There is no ESLint config (`pnpm lint` fails); a formal WCAG/Lighthouse pass is still pending.
 
 ## Agent continuation rules
 

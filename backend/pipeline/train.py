@@ -15,15 +15,19 @@ from backend.data.generate_synthetic import DATA, REGIMES
 from backend.verification.scores import gate, scores
 
 FEATURES = ["raw_mm", "lead", "day", "moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon"]
+# The global baseline is one statistical correction of raw rainfall per lead, as in operational bias correction.
+GLOBAL_FEATURES = ["raw_mm", "lead"]
 QUANTILES = [.1, .5, .9]
 THRESHOLDS = [64.5, 115.6, 204.5]
 
 
-def _fit_quantiles(x, y, prefix):
+def _fit_quantiles(x, y, prefix, weight=None):
     models = []
     for q in QUANTILES:
-        model = lgb.LGBMRegressor(objective="quantile", alpha=q, n_estimators=65, num_leaves=15, learning_rate=.08, verbosity=-1, n_jobs=4)
-        model.fit(x, y)
+        # The middle member is the conditional mean (L2), the RMSE-optimal point forecast; the outer two bound the P10–P90 range.
+        objective = {"objective": "regression"} if q == .5 else {"objective": "quantile", "alpha": q}
+        model = lgb.LGBMRegressor(**objective, n_estimators=90, num_leaves=23, learning_rate=.07, verbosity=-1, n_jobs=4)
+        model.fit(x, y, sample_weight=weight)
         models.append(model)
     return models
 
@@ -33,11 +37,17 @@ def _predict_quantiles(models, x):
     return np.sort(values, axis=1)
 
 
+def with_regimes(x, probabilities):
+    """Exceedance features: predictors plus the six calibrated regime probabilities."""
+    return np.hstack([np.asarray(x, dtype=float), probabilities])
+
+
 def train():
     data = pd.read_parquet(DATA / "synthetic.parquet")
-    train_df = data[data.season <= 2023].sample(frac=1, random_state=26080).head(42000)
+    train_df = data[data.season <= 2023].sample(frac=1, random_state=26080).head(150000)
     valid = data[data.season == 2024].copy()
     test = data[data.season == 2025].copy()
+    del data  # the full multi-season frame is not needed after the split
     x_train, x_valid, x_test = (d[FEATURES] for d in (train_df, valid, test))
     classifier = lgb.LGBMClassifier(n_estimators=90, num_leaves=17, learning_rate=.07, verbosity=-1, n_jobs=4)
     classifier.fit(x_train, train_df.regime_true)
@@ -53,12 +63,15 @@ def train():
         return p / p.sum(axis=1, keepdims=True)
 
     p_test = calibrated(x_test)
-    global_models = _fit_quantiles(x_train, train_df.truth_mm, "global")
-    regime_models = [_fit_quantiles(x_train[train_df.regime_true == r], train_df.loc[train_df.regime_true == r, "truth_mm"], REGIMES[r]) for r in range(6)]
+    global_models = _fit_quantiles(x_train[GLOBAL_FEATURES], train_df.truth_mm, "global")
+    # Soft assignment: each regime's model sees every training row weighted by that regime's calibrated
+    # probability, matching how the models are blended at prediction time.
+    p_train = calibrated(x_train)
+    regime_models = [_fit_quantiles(x_train, train_df.truth_mm, REGIMES[r], weight=p_train[:, r] + 1e-3) for r in range(6)]
 
     def predictions(x):
         probabilities = calibrated(x)
-        global_q = _predict_quantiles(global_models, x)
+        global_q = _predict_quantiles(global_models, x[GLOBAL_FEATURES])
         regime_q = np.stack([_predict_quantiles(models, x) for models in regime_models], axis=1)
         blended = np.sum(regime_q * probabilities[:, :, None], axis=1)
         return probabilities, global_q, np.sort(blended, axis=1)
@@ -80,18 +93,19 @@ def train():
             candidates.append((metric["csi"] or 0, -metric["rmse"], float(offset)))
     active_offset = max(candidates)[2] if candidates else 0.0
     corrected_q = np.sort(np.maximum(0, corrected_q + active_offset * p_test[:, 0, None]), axis=1)
-    # Dedicated exceedance classifiers calibrated using validation data only.
+    # Regime-aware exceedance classifiers (regime probabilities are inputs), calibrated on validation only.
+    ex_train, ex_valid, ex_test = with_regimes(x_train, calibrated(x_train)), with_regimes(x_valid, valid_prob), with_regimes(x_test, p_test)
     exceedance_models = []
     exceedance_calibrators = []
     for threshold in THRESHOLDS:
         event_train = (train_df.truth_mm >= threshold).astype(int)
         model = lgb.LGBMClassifier(n_estimators=70, num_leaves=11, learning_rate=.07, verbosity=-1, n_jobs=4, class_weight="balanced")
-        model.fit(x_train, event_train)
-        raw_valid = model.predict_proba(x_valid)[:, 1].reshape(-1, 1)
+        model.fit(ex_train, event_train)
+        raw_valid = model.predict_proba(ex_valid)[:, 1].reshape(-1, 1)
         cal = LogisticRegression().fit(raw_valid, (valid.truth_mm >= threshold).astype(int))
         exceedance_models.append(model)
         exceedance_calibrators.append(cal)
-    exceedance = np.stack([cal.predict_proba(model.predict_proba(x_test)[:, 1].reshape(-1, 1))[:, 1] for model, cal in zip(exceedance_models, exceedance_calibrators)], axis=1)
+    exceedance = np.stack([cal.predict_proba(model.predict_proba(ex_test)[:, 1].reshape(-1, 1))[:, 1] for model, cal in zip(exceedance_models, exceedance_calibrators)], axis=1)
     labels = np.argmax(p_test, axis=1)
     matrix = confusion_matrix(test.regime_true, labels, labels=list(range(6))).tolist()
     precision, recall, _, support = precision_recall_fscore_support(test.regime_true, labels, labels=list(range(6)), zero_division=0)

@@ -1,119 +1,142 @@
 import { useMemo, useState } from 'react';
-import { CircleMarker, MapContainer, TileLayer, Tooltip } from 'react-leaflet';
-import { Search } from 'lucide-react';
-import 'leaflet/dist/leaflet.css';
+import { Search, X } from 'lucide-react';
 import { useForecast } from '../data';
-import { diffColor, diffLegend, formatDate, mm, rainBands, rainColor, rainLegend } from '../lib';
-import { useForecastStore, useResolvedTheme } from '../store';
+import { diffColor, diffLegend, escapeHtml, formatDate, mm, pct, probColor, probLabels, probLegend, rainBand, rainBands, rainColor, rainLegend, regimeColor, REGIMES, type District, type Forecast, type Theme } from '../lib';
+import { useForecastStore, useResolvedTheme, type Layer } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
-import { DateLeadControls, Field, Toolbar } from '../components/Controls';
-import { Empty, ErrorState, PageHeader, Segmented, Skeleton } from '../components/ui';
+import { IndiaMap } from '../components/IndiaMap';
+import { DateLeadControls, Field, SourceNote, Toolbar } from '../components/Controls';
+import { Empty, ErrorState, LoadingBlock, PageHeader, Segmented, Skeleton } from '../components/ui';
 
-const tiles = {
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+const signed = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)} mm`;
+
+/** Everything a map layer needs: its value, colour, text and legend. */
+const layers: Record<Layer, { label: string; legend: string; value: (i: Forecast) => number; text: (i: Forecast) => string; color: (i: Forecast, t: Theme) => string; keys: (t: Theme) => { color: string; label: string }[] }> = {
+  corrected: {
+    label: 'Served', legend: 'Served rainfall · IMD category', value: (i) => i.served_mm, text: (i) => mm(i.served_mm),
+    color: (i, t) => rainColor(i.served_mm, t), keys: (t) => rainLegend(t).map((color, k) => ({ color, label: rainBands[k].label })),
+  },
+  raw: {
+    label: 'Raw model', legend: 'Raw NWP rainfall · IMD category', value: (i) => i.raw_mm, text: (i) => mm(i.raw_mm),
+    color: (i, t) => rainColor(i.raw_mm, t), keys: (t) => rainLegend(t).map((color, k) => ({ color, label: rainBands[k].label })),
+  },
+  observed: {
+    label: 'Observed', legend: 'Observed rainfall (held-out truth)', value: (i) => i.observed_mm ?? 0, text: (i) => (i.observed_mm === null ? '—' : mm(i.observed_mm)),
+    color: (i, t) => rainColor(i.observed_mm ?? 0, t), keys: (t) => rainLegend(t).map((color, k) => ({ color, label: rainBands[k].label })),
+  },
+  diff: {
+    label: 'Change', legend: 'Served minus raw', value: (i) => i.served_mm - i.raw_mm, text: (i) => signed(i.served_mm - i.raw_mm),
+    color: (i, t) => diffColor(i.served_mm - i.raw_mm, t),
+    keys: (t) => diffLegend(t).map((color, k) => ({ color, label: ['≤ −15', '−15 to −3', '±3', '3 to 15', '≥ 15'][k] })),
+  },
+  probability: {
+    label: 'Heavy-rain chance', legend: 'Chance of ≥ 64.5 mm', value: (i) => i.prob_64_5, text: (i) => pct(i.prob_64_5),
+    color: (i, t) => probColor(i.prob_64_5, t), keys: (t) => probLegend(t).map((color, k) => ({ color, label: probLabels[k] })),
+  },
+  regime: {
+    label: 'Regime', legend: 'Most likely weather regime', value: (i) => REGIMES.length - REGIMES.indexOf(i.dominant_regime), text: (i) => i.dominant_regime,
+    color: (i, t) => regimeColor(i.dominant_regime, t), keys: (t) => REGIMES.map((r) => ({ color: regimeColor(r, t), label: r })),
+  },
 };
 
-function Legend({ diff }: { diff: boolean }) {
+function Legend({ layer }: { layer: Layer }) {
   const theme = useResolvedTheme();
-  const colors = diff ? diffLegend(theme) : rainLegend(theme);
   return (
     <div className="map-legend">
-      <span className="label">{diff ? 'Correction vs raw (mm)' : 'Rainfall (mm/day)'}</span>
-      <div className="legend-bar">{colors.map((c) => <span key={c} style={{ background: c }} />)}</div>
-      <div className="legend-ticks">
-        {diff ? <><span>Drier</span><span>No change</span><span>Wetter</span></> : <><span>0</span><span>64.5</span><span>204.5+</span></>}
-      </div>
+      <span className="label">{layers[layer].legend}</span>
+      <ul className="legend-keys">
+        {layers[layer].keys(theme).map((k) => <li key={k.label}><i style={{ background: k.color }} />{k.label}</li>)}
+      </ul>
     </div>
   );
 }
 
-const signed = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)} mm`;
-
 export default function ForecastPage() {
   const theme = useResolvedTheme();
-  const { date, lead, layer, setLayer } = useForecastStore();
-  const forecast = useForecast(layer);
+  const { source, lead, layer, setLayer } = useForecastStore();
+  const isLive = source === 'live';
+  const shownLayers = (Object.keys(layers) as Layer[]).filter((l) => !(isLive && l === 'observed'));
+  const forecast = useForecast();
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const items = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
-  const isDiff = layer === 'diff';
+  const items: Forecast[] = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
+  const date = forecast.data?.date ?? '';
+  const liveStatus = forecast.data && 'status' in forecast.data ? forecast.data.status : undefined;
+  const loading = forecast.isPending || (!items.length && (liveStatus === 'fetching' || liveStatus === 'idle'));
+  const error = forecast.isError ? forecast.error : liveStatus === 'error' && !items.length ? new Error(('error' in forecast.data! && forecast.data.error) || 'The live forecast is unavailable.') : null;
+  const L = layers[layer];
+  const isRainLayer = layer === 'corrected' || layer === 'raw' || layer === 'observed';
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = q ? items.filter((i) => `${i.district} ${i.state}`.toLowerCase().includes(q)) : items;
-    return [...rows].sort((a, b) => (isDiff ? Math.abs(b.value) - Math.abs(a.value) : b.value - a.value));
-  }, [items, search, isDiff]);
+    return [...rows].sort((a, b) => Math.abs(L.value(b)) - Math.abs(L.value(a)));
+  }, [items, search, L]);
   const current = items.find((i) => i.district_id === selected);
   const heavy = items.filter((i) => i.served_mm >= 64.5).length;
+  const likely = items.filter((i) => i.prob_64_5 >= 0.5).length;
   const corrected = items.filter((i) => i.gate_status === 'Corrected').length;
-  const color = (v: number) => (isDiff ? diffColor(v, theme) : rainColor(v, theme));
+  const color = (i: Forecast) => L.color(i, theme);
+  const tooltip = (i: Forecast) =>
+    `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Served</span><b>${mm(i.served_mm)}</b><span>Raw</span><b>${mm(i.raw_mm)}</b><span>Heavy-rain chance</span><b>${pct(i.prob_64_5)}</b><span>Regime</span><b>${escapeHtml(i.dominant_regime)}</b></div>`;
 
   return (
     <div className="page">
-      <PageHeader title="Forecast map" description="District rainfall for the selected day. Click a district for its likely range, regime and heavy-rain chances." />
+      <PageHeader title="District forecast" description={`${date ? formatDate(date) : loading ? 'Loading forecast' : 'Forecast unavailable'} · Day +${lead}. Point at a district for its numbers; select it for the full breakdown.`} />
 
       <Toolbar>
         <DateLeadControls />
-        <Field label="Show">
+        <Field label="Map layer">
           <Segmented id="layer" label="Map layer" value={layer} onChange={setLayer}
-            options={[{ value: 'corrected', label: 'Served' }, { value: 'raw', label: 'Raw model' }, { value: 'diff', label: 'Change' }]} />
+            options={shownLayers.map((value) => ({ value, label: layers[value].label }))} />
         </Field>
       </Toolbar>
+      <SourceNote />
 
       <div className="summary-row">
         <div className="summary"><span>Districts</span><strong className="num">{forecast.data ? items.length : '—'}</strong></div>
-        <div className="summary"><span>Heavy rain (≥ 64.5 mm)</span><strong className="num">{forecast.data ? heavy : '—'}</strong></div>
-        <div className="summary"><span>Serving corrected</span><strong className="num">{forecast.data ? corrected : '—'}</strong></div>
-        <div className="summary"><span>Valid</span><strong>{date ? formatDate(date) : '—'}</strong></div>
+        <div className={`summary${heavy ? " summary-alert" : ""}`}><span>Heavy rain served (≥ 64.5 mm)</span><strong className="num">{forecast.data ? heavy : '—'}</strong></div>
+        <div className="summary"><span>Heavy-rain chance ≥ 50%</span><strong className="num">{forecast.data ? likely : '—'}</strong></div>
+        <div className="summary"><span>Serving corrected</span><strong className="num">{forecast.data ? `${corrected}` : '—'}</strong></div>
       </div>
 
       <div className="map-layout">
         <div className="map-card card">
-          {forecast.isError ? <div className="pad"><ErrorState error={forecast.error} /></div> : !forecast.data ? <Skeleton height="100%" className="map-skeleton" /> : !items.length ? <div className="pad"><Empty title="No forecasts for this date" /></div> : (
+          {error ? <div className="pad"><ErrorState error={error} onRetry={() => forecast.refetch()} /></div> : loading ? <div className="pad"><LoadingBlock rows={8} label={isLive ? 'Fetching the live forecast' : 'Loading district forecasts'} /></div> : !items.length ? <div className="pad"><Empty title="No forecasts available">Choose another date or lead time, or switch the data source.</Empty><button className="btn btn-secondary mt" onClick={() => forecast.refetch()}>Try again</button></div> : (
             <div className="map-wrap">
-              <MapContainer center={[22.5, 81]} zoom={5} minZoom={4} maxZoom={9} scrollWheelZoom={false} className="leaflet-map">
-                <TileLayer key={theme} url={tiles[theme]} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' />
-                {items.map((item) => {
-                  const isSel = selected === item.district_id;
-                  return (
-                    <CircleMarker key={item.district_id} center={[item.lat, item.lon]} radius={isSel ? 11 : 7}
-                      pathOptions={{ color: isSel ? 'var(--text)' : 'var(--map-stroke)', weight: isSel ? 2.5 : 1, fillColor: color(item.value), fillOpacity: 0.95 }}
-                      eventHandlers={{ click: () => setSelected(item.district_id) }}>
-                      <Tooltip direction="top" offset={[0, -6]}><strong>{item.district}</strong> · {item.state}<br />{isDiff ? signed(item.value) : mm(item.value)}</Tooltip>
-                    </CircleMarker>
-                  );
-                })}
-              </MapContainer>
-              <Legend diff={isDiff} />
+              <IndiaMap items={items} color={color} tooltip={tooltip} selected={selected} onSelect={setSelected} />
+              <Legend layer={layer} />
             </div>
           )}
         </div>
 
         <aside className="list-card card" aria-label="Districts">
           <div className="list-head">
-            <label className="input input-icon">
+            <div className="input input-icon">
               <Search size={16} aria-hidden />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search district or state" aria-label="Search district or state" />
-            </label>
-            <span className="muted small">{isDiff ? 'Sorted by size of correction' : 'Sorted by rainfall'} · {list.length}</span>
+              {search && <button className="icon-btn" onClick={() => setSearch('')} aria-label="Clear district search"><X size={14} aria-hidden /></button>}
+            </div>
+            <span className="muted small" role="status">{loading ? 'Loading districts…' : error ? 'Districts unavailable' : `${list.length} districts · sorted by ${L.label.toLowerCase()}`}</span>
           </div>
           <ul className="district-list">
-            {!forecast.data && Array.from({ length: 8 }, (_, i) => <li key={i} className="pad-sm"><Skeleton height={34} /></li>)}
-            {list.map((item) => (
+            {!error && loading && Array.from({ length: 8 }, (_, i) => <li key={i} className="pad-sm"><Skeleton height={34} /></li>)}
+            {error && <li className="pad"><Empty title="District list unavailable">Use Try again on the map to reload this forecast.</Empty></li>}
+            {!error && list.slice(0, 200).map((item) => (
               <li key={item.district_id}>
                 <button className={selected === item.district_id ? 'is-selected' : ''} onClick={() => setSelected(item.district_id)}>
-                  <span className="swatch" style={{ background: color(item.value) }} />
-                  <span className="district-name"><strong>{item.district}</strong><small>{item.state} · {isDiff ? item.dominant_regime : rainBands[Math.max(0, rainBands.findIndex((b) => item.value < b.max))].label}</small></span>
-                  <b className="num">{isDiff ? signed(item.value) : mm(item.value)}</b>
+                  <span className="swatch" style={{ background: color(item) }} />
+                  <span className="district-name"><strong>{item.district}</strong><small>{item.state} · {isRainLayer ? rainBands[rainBand(L.value(item))].label : item.dominant_regime}</small></span>
+                  <b className="num">{L.text(item)}</b>
                 </button>
               </li>
             ))}
-            {forecast.data && list.length === 0 && <li className="pad"><Empty title="No matching district">Try a different name or state.</Empty></li>}
+            {!error && !loading && list.length === 0 && <li className="pad"><Empty title={search ? 'No matching district' : 'No districts available'}>{search ? 'Try a different name or state.' : 'Choose another date, lead time or data source.'}</Empty>{search && <button className="btn btn-secondary mt" onClick={() => setSearch('')}>Clear search</button>}</li>}
+            {list.length > 200 && <li className="pad-sm muted small">Showing top 200 — search to find others.</li>}
           </ul>
         </aside>
       </div>
 
-      <DistrictDrawer id={selected} name={current?.district} state={current?.state} date={date} lead={lead} onClose={() => setSelected(null)} />
+      <DistrictDrawer id={current ? selected : null} name={current?.district} state={current?.state} date={date} lead={lead} live={isLive ? (current as District | undefined) : undefined} onClose={() => setSelected(null)} />
     </div>
   );
 }

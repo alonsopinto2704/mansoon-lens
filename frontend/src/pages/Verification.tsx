@@ -10,6 +10,21 @@ import { CountUp, ErrorState, GateChip, LoadingBlock, PageHeader, Reveal, Sectio
 
 const MODELS = ['Raw', 'Global', 'Regime-aware'] as const;
 const modelLabel = { Raw: 'Raw model', Global: 'Global fix', 'Regime-aware': 'MonsoonLens' };
+const ciLabels: [string, string, number, string][] = [['raw_rmse', 'RMSE vs raw', 1, ' mm'], ['global_rmse', 'RMSE vs global', 1, ' mm'], ['raw_csi', 'CSI vs raw', 3, ''], ['global_csi', 'CSI vs global', 3, '']];
+
+/** Bootstrap intervals of the improvement; a bound at or below zero fails the gate. */
+function CiList({ ci }: { ci?: Record<string, [number, number]> }) {
+  if (!ci) return <span className="muted">—</span>;
+  const f = (n: number, d: number) => `${n > 0 ? '+' : ''}${n.toFixed(d)}`;
+  return (
+    <ul className="ci-list">
+      {ciLabels.map(([key, label, d, unit]) => {
+        const [lo, hi] = ci[key];
+        return <li key={key} className={lo > 0 ? 'ci-pass' : 'ci-fail'}><span>{label}</span><b className="num">{f(lo, d)} to {f(hi, d)}{unit}</b></li>;
+      })}
+    </ul>
+  );
+}
 
 export default function VerificationPage() {
   const theme = useResolvedTheme();
@@ -122,10 +137,10 @@ export default function VerificationPage() {
         <div className="card table-card">
           <div className="table-scroll">
             <table className="table">
-              <thead><tr><th>Regime</th><th>Decision</th><th className="align-right">Events</th><th>Reason</th></tr></thead>
+              <thead><tr><th>Regime</th><th>Decision</th><th className="align-right">Events</th><th>Improvement, 95% interval</th><th>Reason</th></tr></thead>
               <tbody>
                 {v.regimes.map((name) => (
-                  <tr key={name}><td><strong>{name}</strong></td><td><GateChip status={v.gate[name].status} /></td><td className="num align-right">{v.gate[name].events.toLocaleString('en-IN')}</td><td className="muted">{gateReason(v.gate[name].reason)}</td></tr>
+                  <tr key={name}><td><strong>{name}</strong></td><td><GateChip status={v.gate[name].status} /></td><td className="num align-right">{v.gate[name].events.toLocaleString('en-IN')}</td><td><CiList ci={v.gate[name].confidence_intervals} /></td><td className="muted">{gateReason(v.gate[name].reason)}</td></tr>
                 ))}
               </tbody>
             </table>
