@@ -1,10 +1,43 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, m } from 'motion/react';
 import { Menu, Monitor, Moon, Sun, X } from 'lucide-react';
 import { useLive, useMeta } from './data';
 import { useForecastStore, useResolvedTheme } from './store';
 import { LoadingBlock, ease } from './components/ui';
+import { readForecastView } from './forecastUrl';
+
+function ForecastLocation() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { source, date, lead, layer } = useForecastStore();
+  const previous = useRef<string>();
+  useLayoutEffect(() => {
+    if (!['/forecast', '/alerts'].includes(location.pathname)) { previous.current = undefined; return; }
+    const key = location.pathname + location.search;
+    if (previous.current !== key) {
+      previous.current = key;
+      const incoming = readForecastView(new URLSearchParams(location.search));
+      const next = { source, date, lead, layer, ...incoming };
+      if (next.source === 'live' && next.layer === 'observed') next.layer = 'corrected';
+      if (next.source !== source || next.date !== date || next.lead !== lead || next.layer !== layer) {
+        useForecastStore.setState(next);
+        return;
+      }
+    }
+    const params = new URLSearchParams(location.search);
+    params.set('source', source);
+    params.set('lead', String(lead));
+    params.set('layer', layer);
+    if (source === 'season' && date) params.set('date', date); else params.delete('date');
+    const search = `?${params}`;
+    if (search !== location.search) {
+      previous.current = location.pathname + search;
+      navigate({ pathname: location.pathname, search }, { replace: true });
+    }
+  }, [source, date, lead, layer, location.pathname, location.search, navigate]);
+  return null;
+}
 
 const Overview = lazy(() => import('./pages/Overview'));
 const ForecastPage = lazy(() => import('./pages/Forecast'));
@@ -105,6 +138,7 @@ export default function App() {
 
   return (
     <div className="shell">
+      <ForecastLocation />
       <a href="#main" className="skip-link">Skip to content</a>
       <header className="topbar">
         <div className="topbar-inner">

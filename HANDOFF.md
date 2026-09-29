@@ -18,6 +18,14 @@ Build the attached MonsoonLens brief (SIH 2026, PS 26080) as a runnable local we
 - **Deploy:** root `Dockerfile` (node build stage, then python-slim; trains at build time; gunicorn with one worker and eight threads on `$PORT`), `docker-compose.yml` on port 8000. Flask serves `frontend/dist` with SPA fallback, gzip for JSON, ProxyFix, and a 600/min default rate limit (10/hour on upload). Docker is **not installed on this host**, so the image build has not been executed; the same serving path was smoke-tested with `python -m backend.app`.
 - Tests: 15 backend pytest (including live-feature transform, live endpoint states, geo/forecast id match, gzip); 2 Vitest; `tsc -b` and `vite build` pass. A clean-checkout simulation (generate 150 districts, train, pytest) passes, and CI now does the same.
 
+## 2026-09-30 credibility pass
+
+- Verification adds a computed **Delivered** model (gated mix of corrected and raw) per subset, plus `subset_rows` and `reliability_by_group` (`backend/verification/delivered.py`, called from `train.py` and `export_vercel.py`). Regime/lead subsets filter headline scores, outcome counts, row counts and reliability; by-lead charts and the gate table are labelled "Overall".
+- District drawer: five-day outlook (live run, or consecutive season dates at a fixed lead); P10–P90 relabelled "Correction model range" with a note when the gate serves raw.
+- URL carries `source`, `lead`, `layer`, `date` (season), `district`; copied live links add `shared_run` and show a notice if that run is no longer current (`frontend/src/forecastUrl.ts`, `ForecastLocation` in `App.tsx`).
+- Alerts "All" ranks purely by chance; CSV adds threshold, valid date, lead, source and run time. Observed layer uses a neutral "No observation" colour.
+- Tests: 23 pytest, 11 Vitest, `tsc -b`, `vite build` pass.
+
 ## Exact local commands on this Windows host
 
 Run PowerShell from the repository root. Bundled Python 3.12 and Node are under `C:\Users\alonso\.cache\codex-runtimes\codex-primary-runtime\dependencies`. Python packages have been installed to `.vendor` and frontend packages to `frontend/node_modules` on this host.

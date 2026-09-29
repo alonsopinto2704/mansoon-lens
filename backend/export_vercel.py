@@ -18,6 +18,7 @@ import pandas as pd
 from backend.data.generate_synthetic import DATA, REGIMES, ROOT
 from backend.lite import export_models
 from backend.lite_app import FIELDS
+from backend.verification.delivered import enrich_report
 
 VERCEL_JSON = {
     "$schema": "https://openapi.vercel.sh/vercel.json",
@@ -54,7 +55,11 @@ def export_data(out: Path) -> None:
     np.savez_compressed(out / "season.npz", **arrays)
     (out / "districts.json").write_text(json.dumps(meta.to_dict("records")))
     (out / "models.json").write_text(json.dumps(export_models(joblib.load(DATA / "models.joblib"))))
-    shutil.copy(DATA / "verification.json", out / "verification.json")
+    report = json.loads((DATA / "verification.json").read_text())
+    if "Delivered" not in report["scores"]["Overall"]:
+        with sqlite3.connect(DATA / "monsoonlens.db") as db:
+            report = enrich_report(report, pd.read_sql_query("SELECT * FROM forecasts", db))
+    (out / "verification.json").write_text(json.dumps(report, indent=2))
     shutil.copytree(DATA / "geo", out / "geo", dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.py"))
 
 

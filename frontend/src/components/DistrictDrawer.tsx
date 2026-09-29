@@ -1,12 +1,49 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
 import { Check, Info, Link2, X } from 'lucide-react';
 import { formatDate, gateReason, get, mm, pct, probColor, regimeColor, warningLevel, type District } from '../lib';
-import { useResolvedTheme } from '../store';
+import { useForecastStore, useResolvedTheme } from '../store';
+import { useLiveRun, useMeta } from '../data';
 import { Bar, ErrorState, GateChip, LevelChip, LoadingBlock, ease } from './ui';
 
 const driverLabels: Record<string, string> = { moisture: 'Moisture index', wind: 'Wind index', mslp: 'Pressure anomaly', terrain_m: 'Terrain (m)', coast_km: 'Distance to coast (km)' };
+
+function DistrictOutlook({ id, date, lead, live }: { id: string; date: string; lead: number; live: boolean }) {
+  const run = useLiveRun(live);
+  const meta = useMeta();
+  const { setDate, setLead } = useForecastStore();
+  // Season dates advance at a fixed lead; live days share the same fetched run.
+  const dates = live ? run.data?.dates ?? [] : Array.from({ length: 5 }, (_, n) => {
+    const day = new Date(`${date}T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + n);
+    return day.toISOString().slice(0, 10);
+  });
+  const season = useQueries({ queries: dates.map((day) => ({
+    queryKey: ['district', id, day, lead], queryFn: () => get<District>(`/districts/${id}?date=${day}&lead=${lead}`),
+    enabled: !live && Boolean(meta.data?.dates.includes(day)),
+  })) });
+  return <div className="drawer-section">
+    <h3>{live ? 'Five-day outlook' : 'Five-day season view'}</h3>
+    <p className="muted small">{live ? 'Rainfall and heavy-rain chance from the same run. Select a day for details.' : `Consecutive valid dates at day +${lead}; these are separate historical forecasts.`}</p>
+    <div className="district-outlook">
+      {dates.map((day, n) => {
+        const row = live ? run.data?.items.find((i) => i.district_id === id && i.lead === n + 1) : season[n]?.data;
+        const unavailable = !live && meta.data && !meta.data.dates.includes(day);
+        const failed = !live && season[n]?.isError;
+        const active = live ? lead === n + 1 : n === 0;
+        return <button key={day} className={active ? 'is-active' : ''} aria-pressed={active} disabled={!row}
+          onClick={() => live ? setLead(n + 1) : setDate(day)}>
+          <span>{new Date(`${day}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+          <strong className="num">{row ? mm(row.served_mm) : '—'}</strong>
+          <small>{row ? `${pct(row.prob_64_5)} heavy` : unavailable ? 'Outside season' : failed ? 'Unavailable' : 'Loading…'}</small>
+        </button>;
+      })}
+    </div>
+    <p className="muted small">Heavy rain: ≥ 64.5 mm in 24 hours.</p>
+    {!live && season.some((q) => q.isError) && <button className="link" onClick={() => season.forEach((q) => { if (q.isError) void q.refetch(); })}>Retry unavailable days</button>}
+  </div>;
+}
 
 function Content({ id, date, lead, live }: { id: string; date: string; lead: number; live?: District }) {
   const theme = useResolvedTheme();
@@ -14,7 +51,7 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
   if (!live && detail.isError) return <div className="drawer-body"><ErrorState error={detail.error} /></div>;
   const item = live ?? detail.data;
   if (!item) return <div className="drawer-body"><LoadingBlock rows={8} label="Loading district forecast" /></div>;
-  const span = Math.max(item.corrected_p90, 1);
+  const span = Math.max(item.corrected_p90, item.corrected_p50, item.corrected_p10, 1);
   return (
     <div className="drawer-body">
       <div className="drawer-hero">
@@ -24,8 +61,11 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
         <p className="muted">{gateReason(item.gate_reason)}</p>
       </div>
 
+      <DistrictOutlook id={id} date={date} lead={lead} live={Boolean(live)} />
+
       <div className="drawer-section">
-        <h3>Likely range</h3>
+        <h3>Correction model range</h3>
+        <p className="muted small">{item.gate_status === 'Corrected' ? 'P10–P90 estimates from the correction model; coverage is not guaranteed.' : 'The gate selected raw rainfall. This range belongs to the unused correction model, not the served forecast.'}</p>
         <div className="range">
           <div className="range-track">
             <m.span className="range-band" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.6, ease }} style={{ left: `${(item.corrected_p10 / span) * 100}%`, right: 0 }} />
@@ -33,7 +73,7 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
           </div>
           <div className="range-labels">
             <span>Low (P10)<b className="num">{mm(item.corrected_p10)}</b></span>
-            <span>Best estimate<b className="num">{mm(item.corrected_p50)}</b></span>
+            <span>Model estimate<b className="num">{mm(item.corrected_p50)}</b></span>
             <span>High (P90)<b className="num">{mm(item.corrected_p90)}</b></span>
           </div>
         </div>
@@ -57,11 +97,12 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
           <div><span>Served</span><strong className="num">{item.served_mm.toFixed(1)}</strong><small>mm</small></div>
           <div><span>Change</span><strong className="num">{(item.served_mm - item.raw_mm).toFixed(1)}</strong><small>mm</small></div>
         </div>
-        <p className="muted small mt">Live run: correction is unverified on real observations.</p>
+        <p className="muted small mt">Live run: correction is unverified on real observations. Shared live links open the latest available run; earlier runs are not archived.</p>
       </div>}
 
       <div className="drawer-section">
         <h3>Heavy-rain chance</h3>
+        <p className="muted small">From the probability model, even when the rainfall gate serves raw values. {live ? 'Not verified against live observations.' : ''}</p>
         <div className="risk-grid">
           {([['Heavy', '≥ 64.5 mm', item.prob_64_5], ['Very heavy', '≥ 115.6 mm', item.prob_115_6], ['Extreme', '≥ 204.5 mm', item.prob_204_5]] as const).map(([label, cut, p]) => (
             <div key={cut} className="risk-tile" style={{ ['--risk' as string]: probColor(p, theme) }}><span>{label}</span><strong className="num">{pct(p)}</strong><small>{cut}</small></div>
@@ -93,10 +134,16 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
 /** Copies the current URL (which carries ?district=) so a district forecast can be shared. */
 function CopyLink() {
   const [done, setDone] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const { source } = useForecastStore();
+  const run = useLiveRun(source === 'live');
   const copy = async () => {
-    try { await navigator.clipboard.writeText(window.location.href); setDone(true); setTimeout(() => setDone(false), 1600); } catch { /* clipboard blocked: nothing to do */ }
+    const url = new URL(window.location.href);
+    if (source === 'live' && run.data?.fetched_at) url.searchParams.set('shared_run', run.data.fetched_at);
+    else url.searchParams.delete('shared_run');
+    try { await navigator.clipboard.writeText(url.href); setFailed(false); setDone(true); setTimeout(() => setDone(false), 1600); } catch { setFailed(true); }
   };
-  return <button className="icon-btn" onClick={copy} aria-label={done ? 'Link copied' : 'Copy link to this district'} title={done ? 'Link copied' : 'Copy link'}>{done ? <Check size={17} /> : <Link2 size={17} />}</button>;
+  return <><button className="icon-btn" onClick={copy} aria-label={done ? 'Link copied' : 'Copy link to this district'} title={done ? 'Link copied' : 'Copy link'}>{done ? <Check size={17} /> : <Link2 size={17} />}</button>{failed && <span role="status" className="small">Copy failed. Copy the address bar link.</span>}</>;
 }
 
 export function DistrictDrawer({ id, name, state, date, lead, live, onClose }: { id: string | null; name?: string; state?: string; date: string; lead: number; live?: District; onClose: () => void }) {

@@ -13,6 +13,7 @@ from scipy.spatial import cKDTree
 
 from backend.data.generate_synthetic import DATA, REGIMES
 from backend.verification.scores import gate, scores
+from backend.verification.delivered import enrich_report
 
 FEATURES = ["raw_mm", "lead", "day", "moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon"]
 # The global baseline is one statistical correction of raw rainfall per lead, as in operational bias correction.
@@ -148,7 +149,6 @@ def train():
         observed = (truth >= threshold).astype(float)
         bins = np.minimum((exceedance[:, j] * 10).astype(int), 9)
         report["reliability"][str(threshold)] = [{"forecast": float(exceedance[bins == k, j].mean()), "observed": float(observed[bins == k].mean()), "count": int(np.sum(bins == k))} for k in range(10) if np.any(bins == k)]
-    DATA.joinpath("verification.json").write_text(json.dumps(report, indent=2))
     served = np.where(np.array([report["gate"][REGIMES[r]]["status"] == "Corrected" for r in labels]), corrected_mid, raw)
     test["corrected_p10"] = corrected_q[:, 0]
     test["corrected_p50"] = corrected_mid
@@ -161,6 +161,8 @@ def train():
         test[f"prob_{str(threshold).replace('.', '_')}"] = exceedance[:, j]
     for r, name in enumerate(REGIMES):
         test[f"regime_{r}"] = p_test[:, r]
+    enrich_report(report, test)
+    DATA.joinpath("verification.json").write_text(json.dumps(report, indent=2))
     with sqlite3.connect(DATA / "monsoonlens.db") as db:
         test.to_sql("forecasts", db, if_exists="replace", index=False, chunksize=3000)
         db.execute("CREATE INDEX ix_forecast_date_lead ON forecasts(date, lead)")

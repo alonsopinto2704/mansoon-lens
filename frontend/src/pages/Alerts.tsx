@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronRight, Download, Search } from 'lucide-react';
 import { m } from 'motion/react';
 import { useForecast } from '../data';
-import { escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, warningLevel, type District, type Forecast, type Level } from '../lib';
-import { titleDate } from '../lib';
+import { alertsCsv, compareAlerts, escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, titleDate, warningLevel, type District, type Forecast, type Level } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
@@ -20,11 +20,8 @@ type LevelFilter = 'yellow' | 'orange' | 'red' | 'all';
 const rankOf = (l: Level) => LEVELS.indexOf(l);
 const minRank: Record<LevelFilter, number> = { all: 0, yellow: 1, orange: 2, red: 3 };
 
-function exportCsv(rows: Forecast[], key: (typeof thresholds)[number]['key'], name: string) {
-  const esc = (v: string | number) => (typeof v === 'string' && /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : String(v));
-  const lines = [['district', 'state', 'level', 'action', 'probability', 'served_mm', 'raw_mm', 'regime', 'correction'].join(',')]
-    .concat(rows.map((r) => { const l = warningLevel(r); return [r.district, r.state, l.name, l.action, r[key].toFixed(3), r.served_mm.toFixed(1), r.raw_mm.toFixed(1), r.dominant_regime, r.gate_status].map(esc).join(','); }));
-  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+function exportCsv(content: string, name: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);
   a.click();
@@ -40,7 +37,14 @@ export default function AlertsPage() {
   const [mapMode, setMapMode] = useState<'level' | 'chance'>('level');
   const [state, setState] = useState('');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  // Selected district is mirrored to ?district= so the drawer's copy-link button shares a deep link.
+  const [params, setParams] = useSearchParams();
+  const selected = params.get('district');
+  const setSelected = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('district', id); else next.delete('district');
+    setParams(next, { replace: true });
+  };
   const forecast = useForecast();
   const all: Forecast[] = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
   const date = forecast.data?.date ?? '';
@@ -50,9 +54,11 @@ export default function AlertsPage() {
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
     return all.filter((i) => rankOf(warningLevel(i)) >= minRank[levelFilter] && (!state || i.state === state) && `${i.district} ${i.state}`.toLowerCase().includes(q))
-      .sort((a, b) => rankOf(warningLevel(b)) - rankOf(warningLevel(a)) || b[t.key] - a[t.key]);
+      .sort((a, b) => compareAlerts(a, b, t.key, levelFilter === 'all'));
   }, [all, t.key, levelFilter, state, search]);
   const top = useMemo(() => all.reduce<Forecast | null>((w, i) => (!w || i[t.key] > w[t.key] ? i : w), null), [all, t.key]);
+  // warningLevel per row, computed once per item for the table render and export.
+  const levels = useMemo(() => new Map(all.map((i) => [i.district_id, warningLevel(i)])), [all]);
   const current = all.find((i) => i.district_id === selected);
   const liveError = !all.length && forecast.data && 'status' in forecast.data && forecast.data.status === 'error' ? new Error(forecast.data.error || 'The live forecast is unavailable. Try again or switch to Verified season.') : null;
   const loading = forecast.isPending || (!all.length && forecast.data && 'status' in forecast.data && (forecast.data.status === 'fetching' || forecast.data.status === 'idle'));
@@ -85,7 +91,7 @@ export default function AlertsPage() {
         </div>
         <div className="ws-actions">
           <SourceControls />
-          <button className="btn btn-secondary" disabled={!ready || !items.length} onClick={() => exportCsv(items, t.key, `monsoonlens-alerts-${date}-d${lead}.csv`)}><Download size={16} aria-hidden /> Export CSV</button>
+          <button className="btn btn-secondary" disabled={!ready || !items.length} onClick={() => exportCsv(alertsCsv(items, t.key, { date, lead, source: source === 'live' ? 'live_nwp_unverified_correction' : 'synthetic_2025', fetchedAt: forecast.data && 'fetched_at' in forecast.data ? forecast.data.fetched_at ?? '' : '' }), `monsoonlens-alerts-${source}-${date}-d${lead}-ge${threshold}mm.csv`)}><Download size={16} aria-hidden /> Export CSV</button>
         </div>
       </header>
 
@@ -146,7 +152,7 @@ export default function AlertsPage() {
         <div className="table-head table-head-tools">
           <div>
             <h2>{ready ? `${items.length} district${items.length === 1 ? '' : 's'}` : 'Districts'}</h2>
-            <p className="muted small">Ranked by level, then by chance of ≥ {threshold} mm in 24 h.</p>
+            <p className="muted small">{levelFilter === 'all' ? 'Ranked by chance' : 'Ranked by level, then by chance'} of ≥ {threshold} mm in 24 h.</p>
           </div>
           <div className="table-tools">
             <Segmented id="level-filter" label="Minimum level" value={levelFilter} onChange={setLevelFilter}
@@ -169,7 +175,7 @@ export default function AlertsPage() {
               <thead><tr><th>Level</th><th>District</th><th>Chance ≥ {threshold} mm</th><th className="align-right">Served</th><th>Regime</th><th>Correction</th><th><span className="sr-only">Details</span></th></tr></thead>
               <tbody>
                 {items.slice(0, 300).map((i, n) => {
-                  const l = warningLevel(i);
+                  const l = levels.get(i.district_id) ?? warningLevel(i);
                   return (
                     <m.tr key={i.district_id} className="row-link" onClick={() => setSelected(i.district_id)}
                       initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: Math.min(n, 12) * 0.02 }}>

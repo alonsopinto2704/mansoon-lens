@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import type { Theme } from './lib';
+import { readForecastView } from './forecastUrl';
 
 type ThemePref = Theme | 'system';
 export type Layer = 'corrected' | 'raw' | 'observed' | 'diff' | 'probability' | 'warning' | 'regime';
@@ -19,6 +20,7 @@ function storedTheme(): ThemePref {
 
 export const useForecastStore = create<State>((set) => ({
   source: 'live', date: '', lead: 1, layer: 'corrected', theme: storedTheme(),
+  ...readForecastView(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search)),
   setSource: (source) => set((s) => ({ source, layer: source === 'live' && s.layer === 'observed' ? 'corrected' : s.layer })), setDate: (date) => set({ date }), setLead: (lead) => set({ lead }), setLayer: (layer) => set({ layer }),
   setTheme: (theme) => {
     try { if (theme === 'system') localStorage.removeItem('ml-theme'); else localStorage.setItem('ml-theme', theme); } catch { /* storage unavailable */ }

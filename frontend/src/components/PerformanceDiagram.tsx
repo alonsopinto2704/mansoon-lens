@@ -66,7 +66,7 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
                   <g key={p.threshold} onMouseEnter={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} onMouseLeave={() => setHover(null)} style={{ cursor: 'default' }}>
                     <circle cx={cx} cy={cy} r={12} fill="transparent" />
                     <circle cx={cx} cy={cy} r={on ? 6.5 : 4.5} fill={sr.color} stroke="var(--surface)" strokeWidth={2} opacity={on ? 1 : 0.75} />
-                    {sr.key === 'Regime-aware' && <text x={cx + 9} y={cy - 7} fontSize="10" fontWeight={600} fill={text}>{p.threshold}</text>}
+                    {sr.key === 'Delivered' && <text x={cx + 9} y={cy - 7} fontSize="10" fontWeight={600} fill={text}>{p.threshold}</text>}
                     <title>{`${sr.label} · ≥ ${p.threshold} mm — POD ${(p.score.pod ?? 0).toFixed(3)}, success ratio ${(1 - (p.score.far ?? 0)).toFixed(3)}, CSI ${(p.score.csi ?? 0).toFixed(3)}`}</title>
                   </g>
                 );
@@ -77,7 +77,7 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
       </svg>
       <p className="perf-readout" aria-live="polite">
         {hover ? <><b>{hover.label}</b> at ≥ {hover.threshold} mm · POD <b className="num">{(hover.s.pod ?? 0).toFixed(2)}</b> · FAR <b className="num">{(hover.s.far ?? 0).toFixed(2)}</b> · CSI <b className="num">{(hover.s.csi ?? 0).toFixed(2)}</b> · bias <b className="num">{((hover.s.pod ?? 0) / (1 - (hover.s.far ?? 0) || 1)).toFixed(2)}</b></>
-          : <>Solid curves: CSI. Dashed lines: frequency bias. Numbers beside the MonsoonLens points are thresholds (mm). Point at a marker for its scores.</>}
+          : <>Solid curves: CSI. Dashed lines: frequency bias. Numbers beside the delivered-forecast points are thresholds (mm). Point at a marker for its scores.</>}
       </p>
     </div>
   );

@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { m } from 'motion/react';
 import { useForecast, useVerification } from '../data';
-import { escapeHtml, fixed, gateReason, mm, pct, regimeBlurb, regimeColor, REGIMES, type Forecast } from '../lib';
-import { titleDate } from '../lib';
+import { escapeHtml, fixed, gateReason, mm, pct, regimeBlurb, regimeColor, REGIMES, titleDate, type Forecast } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { IndiaMap } from '../components/IndiaMap';
 import { DayStrip, SourceControls } from '../components/Controls';

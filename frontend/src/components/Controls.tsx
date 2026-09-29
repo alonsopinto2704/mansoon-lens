@@ -1,14 +1,11 @@
 import type { ReactNode } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { m } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
 import { useLive, useLiveDays, useMeta } from '../data';
 import { formatDate } from '../lib';
 import { useForecastStore, type Source } from '../store';
 import { Segmented } from './ui';
-
-export function Toolbar({ children }: { children: ReactNode }) {
-  return <div className="toolbar card">{children}</div>;
-}
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="field"><span className="field-label">{label}</span>{children}</div>;
@@ -69,22 +66,9 @@ export function DayStrip() {
   );
 }
 
-/** Kept for pages that still use the older inline controls. */
-export function DateLeadControls() {
-  const { lead, setLead } = useForecastStore();
-  return (
-    <>
-      <Field label="Data"><SourceControls /></Field>
-      <Field label="Lead time">
-        <Segmented id="lead" label="Lead time in days" value={lead} onChange={setLead}
-          options={[1, 2, 3, 4, 5].map((n) => ({ value: n, label: `+${n}d` }))} />
-      </Field>
-    </>
-  );
-}
-
 /** One-line provenance note under the toolbar; says plainly what the numbers are. */
 export function SourceNote() {
+  const [params] = useSearchParams();
   const source = useForecastStore((s) => s.source);
   const date = useForecastStore((s) => s.date);
   const live = useLive(source === 'live');
@@ -98,6 +82,6 @@ export function SourceNote() {
   const at = d.fetched_at ? new Date(d.fetched_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : '';
   if (d.status === 'error') return <p className="source-note source-note-warn" role="status">Live refresh failed. Showing the last available run{at ? `, fetched ${at}` : ''}. <button className="link" onClick={() => live.refetch()}>Try again</button></p>;
   return (
-    <p className="source-note"><span className="live-dot" /> Live raw rainfall from Open-Meteo’s global NWP (run fetched {at}{live.refreshing ? ' · checking for a newer run…' : ''}), corrected by MonsoonLens. The correction was trained and verified on sample data, so live corrected values are unverified. For warnings, follow IMD.</p>
+    <p className="source-note"><span className="live-dot" /> Live raw rainfall from Open-Meteo’s global NWP (run fetched {at}{live.refreshing ? ' · checking for a newer run…' : ''}), corrected by MonsoonLens. The correction was trained and verified on sample data, so live corrected values are unverified. For warnings, follow IMD. {params.has('shared_run') && params.get('shared_run') !== d.fetched_at ? 'This shared link refers to a different run. Showing the latest available forecast; the original run is not archived.' : ''}</p>
   );
 }

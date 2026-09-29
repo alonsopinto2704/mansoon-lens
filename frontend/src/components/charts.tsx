@@ -7,7 +7,6 @@ export function chartTheme(theme: Theme) {
   return {
     grid: dark ? '#223049' : '#e8ecf1',
     axis: dark ? '#8391a7' : '#6b7686',
-    cursor: dark ? '#ffffff10' : '#0d172608',
     tick: { fontSize: 12, fill: dark ? '#aab6c8' : '#4a5566' },
   };
 }

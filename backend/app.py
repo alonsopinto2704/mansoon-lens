@@ -235,11 +235,11 @@ def create_app():
     def csv_report():
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(["group", "model", "threshold_mm", "rmse", "bias", "pod", "far", "csi", "ets", "brier"])
+        writer.writerow(["group", "model", "threshold_mm", "rmse", "bias", "pod", "far", "csi", "ets", "brier", "evaluation_note"])
         for group, models_by_name in report()["scores"].items():
             for model, thresholds in models_by_name.items():
                 for threshold, value in thresholds.items():
-                    writer.writerow([group, model, threshold] + [value.get(key) for key in ("rmse", "bias", "pod", "far", "csi", "ets", "brier")])
+                    writer.writerow([group, model, threshold] + [value.get(key) for key in ("rmse", "bias", "pod", "far", "csi", "ets", "brier")] + [report().get("delivered_evaluation", "") if model == "Delivered" else "Synthetic 2025 test season"])
         return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=monsoonlens-verification.csv"})
 
     @app.get("/api/v1/verification/report.pdf")
@@ -258,8 +258,11 @@ def create_app():
         y -= 18
         for model, values in report()["scores"]["Overall"].items():
             s = values["64.5"]
-            page.drawString(40, y, f"{model}: RMSE {s['rmse']:.2f} mm | CSI {s['csi']:.3f} | POD {s['pod']:.3f} | FAR {s['far']:.3f}")
+            page.drawString(40, y, f"{model}: RMSE {s['rmse']:.2f} mm | " + " | ".join(f"{k.upper()} {s[k]:.3f}" if s.get(k) is not None else f"{k.upper()} n/a" for k in ("csi", "pod", "far")))
             y -= 19
+        page.setFont("Helvetica", 8)
+        page.drawString(40, y - 15, "Delivered: retrospective results; the gate was selected on this same season.")
+        page.drawString(40, y - 28, "Independent validation is still required. Probabilities are unchanged by the gate.")
         page.save()
         buffer.seek(0)
         return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name="monsoonlens-verification.pdf")

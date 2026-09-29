@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useForecast } from '../data';
 import {
-  diffColor, diffLegend, escapeHtml, LEVELS, mm, pct, probColor, probLabels, probLegend, rainBand, rainBands, rainColor, rainLegend,
-  levelFill, regimeColor, REGIMES, warningLevel, type District, type Forecast, type Theme,
+  noObservationColor, observationColor, diffColor, diffIndex, diffLegend, diffLabels, escapeHtml, LEVELS, mm, pct, probColor, probLabels, probLegend, rainBand, rainBands, rainColor, rainLegend,
+  levelFill, regimeColor, REGIMES, titleDate, warningLevel, type District, type Forecast, type Theme,
 } from '../lib';
-import { titleDate } from '../lib';
 import { useForecastStore, useResolvedTheme, type Layer } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
@@ -15,32 +14,32 @@ import { CountUp, Empty, ErrorState, LoadingBlock, Segmented, Skeleton } from '.
 
 const signed = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)} mm`;
 
-type LayerSpec = { label: string; legend: string; value: (i: Forecast) => number; text: (i: Forecast) => string; color: (i: Forecast, t: Theme) => string; keys: (t: Theme) => { color: string; label: string }[] };
+type LayerSpec = { label: string; legend: string; value: (i: Forecast) => number; text: (i: Forecast) => string; color: (i: Forecast, t: Theme) => string; keys: (t: Theme) => { color: string; label: string }[]; detail: (i: Forecast) => string };
 const rainKeys = (t: Theme) => rainLegend(t).map((color, k) => ({ color, label: rainBands[k].label }));
 
 /** Everything a map layer needs: its value, colour, text and legend. */
 const layers: Record<Layer, LayerSpec> = {
-  corrected: { label: 'Served', legend: 'Served rainfall', value: (i) => i.served_mm, text: (i) => mm(i.served_mm), color: (i, t) => rainColor(i.served_mm, t), keys: rainKeys },
+  corrected: { label: 'Served', legend: 'Served rainfall', value: (i) => i.served_mm, text: (i) => mm(i.served_mm), color: (i, t) => rainColor(i.served_mm, t), keys: rainKeys, detail: (i) => rainBands[rainBand(i.served_mm)].label },
   warning: {
     label: 'Warning level', legend: 'Colour code (derived)', value: (i) => LEVELS.indexOf(warningLevel(i)) + i.prob_64_5, text: (i) => warningLevel(i).name,
-    color: (i, t) => levelFill(warningLevel(i), t), keys: (t) => [...LEVELS].reverse().map((l) => ({ color: levelFill(l, t), label: `${l.name} · ${l.action}` })),
+    color: (i, t) => levelFill(warningLevel(i), t), keys: (t) => [...LEVELS].reverse().map((l) => ({ color: levelFill(l, t), label: `${l.name} · ${l.action}` })), detail: (i) => warningLevel(i).action,
   },
   probability: {
     label: 'Heavy-rain chance', legend: 'Chance of ≥ 64.5 mm', value: (i) => i.prob_64_5, text: (i) => pct(i.prob_64_5),
-    color: (i, t) => probColor(i.prob_64_5, t), keys: (t) => probLegend(t).map((color, k) => ({ color, label: probLabels[k] })),
+    color: (i, t) => probColor(i.prob_64_5, t), keys: (t) => probLegend(t).map((color, k) => ({ color, label: probLabels[k] })), detail: (i) => warningLevel(i).action,
   },
-  raw: { label: 'Raw model', legend: 'Raw NWP rainfall', value: (i) => i.raw_mm, text: (i) => mm(i.raw_mm), color: (i, t) => rainColor(i.raw_mm, t), keys: rainKeys },
+  raw: { label: 'Raw model', legend: 'Raw NWP rainfall', value: (i) => i.raw_mm, text: (i) => mm(i.raw_mm), color: (i, t) => rainColor(i.raw_mm, t), keys: rainKeys, detail: (i) => rainBands[rainBand(i.raw_mm)].label },
   diff: {
     label: 'Change', legend: 'Served minus raw (mm)', value: (i) => i.served_mm - i.raw_mm, text: (i) => signed(i.served_mm - i.raw_mm),
-    color: (i, t) => diffColor(i.served_mm - i.raw_mm, t), keys: (t) => diffLegend(t).map((color, k) => ({ color, label: ['Drier by 15+', 'Drier by 3–15', 'Within ±3', 'Wetter by 3–15', 'Wetter by 15+'][k] })),
+    color: (i, t) => diffColor(i.served_mm - i.raw_mm, t), keys: (t) => diffLegend(t).map((color, k) => ({ color, label: diffLabels[k] })), detail: (i) => diffLabels[diffIndex(i.served_mm - i.raw_mm)].toLowerCase(),
   },
   observed: {
     label: 'Observed', legend: 'Observed rainfall', value: (i) => i.observed_mm ?? 0, text: (i) => (i.observed_mm === null ? '—' : mm(i.observed_mm)),
-    color: (i, t) => rainColor(i.observed_mm ?? 0, t), keys: rainKeys,
+    color: (i, t) => observationColor(i.observed_mm, t), keys: (t) => [...rainKeys(t), { color: noObservationColor(t), label: 'No observation' }], detail: (i) => (i.observed_mm === null ? 'no observation' : rainBands[rainBand(i.observed_mm ?? 0)].label),
   },
   regime: {
     label: 'Regime', legend: 'Most likely weather regime', value: (i) => REGIMES.length - REGIMES.indexOf(i.dominant_regime), text: (i) => i.dominant_regime,
-    color: (i, t) => regimeColor(i.dominant_regime, t), keys: (t) => REGIMES.map((r) => ({ color: regimeColor(r, t), label: r })),
+    color: (i, t) => regimeColor(i.dominant_regime, t), keys: (t) => REGIMES.map((r) => ({ color: regimeColor(r, t), label: r })), detail: (i) => i.dominant_regime,
   },
 };
 
@@ -64,12 +63,12 @@ export default function ForecastPage() {
   const forecast = useForecast();
   // ?district=<id> deep-links to a district (the home page search and shared links use it).
   const [params, setParams] = useSearchParams();
-  const [selected, setSelectedState] = useState<string | null>(params.get('district'));
+  const selected = params.get('district');
   const setSelected = (id: string | null) => {
-    setSelectedState(id);
-    setParams((p) => { if (id) p.set('district', id); else p.delete('district'); return p; }, { replace: true });
+    const next = new URLSearchParams(params);
+    if (id) next.set('district', id); else next.delete('district');
+    setParams(next, { replace: true });
   };
-  useEffect(() => { setSelectedState(params.get('district')); }, [params]);
   const [search, setSearch] = useState('');
   const items: Forecast[] = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
   const date = forecast.data?.date ?? '';
@@ -77,12 +76,11 @@ export default function ForecastPage() {
   const loading = forecast.isPending || (!items.length && (liveStatus === 'fetching' || liveStatus === 'idle'));
   const error = forecast.isError ? forecast.error : liveStatus === 'error' && !items.length ? new Error(('error' in forecast.data! && forecast.data.error) || 'The live forecast is unavailable.') : null;
   const L = layers[layer];
-  const isRainLayer = layer === 'corrected' || layer === 'raw' || layer === 'observed';
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = q ? items.filter((i) => `${i.district} ${i.state}`.toLowerCase().includes(q)) : items;
-    return [...rows].sort((a, b) => Math.abs(L.value(b)) - Math.abs(L.value(a)));
-  }, [items, search, L]);
+    return [...rows].sort((a, b) => layer === 'observed' && (a.observed_mm === null || b.observed_mm === null) ? Number(a.observed_mm === null) - Number(b.observed_mm === null) : Math.abs(L.value(b)) - Math.abs(L.value(a)));
+  }, [items, search, L, layer]);
   const current = items.find((i) => i.district_id === selected);
   const stats = useMemo(() => ({
     heavy: items.filter((i) => i.served_mm >= 64.5).length,
@@ -94,7 +92,7 @@ export default function ForecastPage() {
   const color = (i: Forecast) => L.color(i, theme);
   const tooltip = (i: Forecast) => {
     const level = warningLevel(i);
-    return `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Served</span><b>${mm(i.served_mm)}</b><span>Raw NWP</span><b>${mm(i.raw_mm)}</b><span>Heavy-rain chance</span><b>${pct(i.prob_64_5)}</b><span>Warning level</span><b><i class="tip-dot" style="background:${level.color}"></i>${level.name}</b><span>Regime</span><b>${escapeHtml(i.dominant_regime)}</b></div>`;
+    return `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>${escapeHtml(L.legend)}</span><b>${escapeHtml(L.text(i))}</b><span>Served</span><b>${mm(i.served_mm)}</b><span>Raw NWP</span><b>${mm(i.raw_mm)}</b><span>Heavy-rain chance</span><b>${pct(i.prob_64_5)}</b><span>Warning level</span><b><i class="tip-dot" style="background:${level.color}"></i>${level.name}</b><span>Regime</span><b>${escapeHtml(i.dominant_regime)}</b></div>`;
   };
 
   return (
@@ -148,7 +146,7 @@ export default function ForecastPage() {
                 <button className={selected === item.district_id ? 'is-selected' : ''} onClick={() => setSelected(item.district_id)}>
                   <span className="rank num">{rank + 1}</span>
                   <span className="swatch" style={{ background: color(item) }} />
-                  <span className="district-name"><strong>{item.district}</strong><small>{item.state} · {isRainLayer ? rainBands[rainBand(L.value(item))].label : layer === 'warning' ? warningLevel(item).action : item.dominant_regime}</small></span>
+                  <span className="district-name"><strong>{item.district}</strong><small>{item.state} · {L.detail(item)}</small></span>
                   <b className="num">{L.text(item)}</b>
                 </button>
               </li>

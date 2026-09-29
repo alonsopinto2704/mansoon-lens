@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { escapeHtml, get, levelFill, LEVELS, rainBand, rainColor, warningLevel } from './lib';
+import { diffColor, diffIndex, diffLabels, diffLegend, escapeHtml, get, levelFill, LEVELS, rainBand, rainColor, warningLevel } from './lib';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,6 +29,23 @@ describe('rainfall map colors', () => {
 
   it('uses a distinct ramp for dark surfaces', () => {
     expect(rainColor(115.6, 'dark')).not.toBe(rainColor(115.6, 'light'));
+  });
+});
+
+describe('change layer bins', () => {
+  it('colours and legend labels stay aligned across the ±3 / ±15 mm cut-offs', () => {
+    expect(diffIndex(-20)).toBe(0);
+    expect(diffIndex(-4)).toBe(1);
+    expect(diffIndex(0)).toBe(2);
+    expect(diffIndex(4)).toBe(3);
+    expect(diffIndex(20)).toBe(4);
+    for (const theme of ['light', 'dark'] as const) {
+      expect(diffLabels).toHaveLength(diffLegend(theme).length);
+      expect(new Set(diffLabels).size).toBe(diffLabels.length);
+      // each bin's colour is distinct from its neighbours so the legend keys stay tellable
+      for (let i = 1; i < 5; i++) expect(diffLegend(theme)[i]).not.toBe(diffLegend(theme)[i - 1]);
+    }
+    for (const cut of [-20, -4, 0, 4, 20]) expect(diffColor(cut)).toBe(diffLegend('light')[diffIndex(cut)]);
   });
 });
 

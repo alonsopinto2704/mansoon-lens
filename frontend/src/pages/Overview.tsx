@@ -1,17 +1,16 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { m } from 'motion/react';
 import { ArrowRight, MapPinned, Search } from 'lucide-react';
 import { useLive, useVerification } from '../data';
 import { escapeHtml, levelFill, LEVELS, mm, pct, warningLevel, type Forecast } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { IndiaMap } from '../components/IndiaMap';
-import { ErrorState, GateChip, Reveal, Skeleton, ease } from '../components/ui';
+import { ErrorState, GateChip, Reveal, Skeleton } from '../components/ui';
 
 const steps = [
   { title: 'Read the pattern', text: 'A calibrated classifier gives every district-day a probability for each of six monsoon regimes.', to: '/regimes' },
   { title: 'Correct for it', text: 'Regime-specific models, blended by those probabilities, turn raw NWP rainfall into a low, best and high estimate.', to: '/method' },
-  { title: 'Price the risk', text: 'Calibrated chances of crossing IMD’s 64.5, 115.6 and 204.5 mm thresholds, shown in the familiar colour code.', to: '/alerts' },
+  { title: 'Estimate heavy rain', text: 'See the chance of crossing 64.5, 115.6 and 204.5 mm in a day, with a district outlook for each threshold.', to: '/alerts' },
   { title: 'Prove it first', text: 'A regime’s correction is served only after it beats raw and a single global fix on a season it never saw.', to: '/verification' },
 ];
 
@@ -29,7 +28,7 @@ function LiveHero() {
   const at = live.data?.fetched_at ? new Date(live.data.fetched_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
 
   return (
-    <m.div className="hero-map card" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease, delay: 0.1 }}>
+    <div className="hero-map card">
       <div className="hero-map-head">
         <div>
           <span className="label">{items.length ? <><span className="live-dot" aria-hidden /> Live · run {at}</> : 'Live NWP'}</span>
@@ -50,7 +49,7 @@ function LiveHero() {
         </ul>
         {wettest && <span className="muted small">Wettest: <b className="ink">{wettest.district}</b> {mm(wettest.served_mm)}</span>}
       </div>
-    </m.div>
+    </div>
   );
 }
 
@@ -59,19 +58,20 @@ function Evidence() {
   const v = verification.data;
   if (verification.isError) return <ErrorState error={verification.error} />;
   const at = (model: string) => v?.scores.Overall?.[model]?.['64.5'];
-  const raw = at('Raw'), ours = at('Regime-aware'), global = at('Global');
+  const raw = at('Raw'), ours = at('Delivered'), global = at('Global');
   const passed = v ? v.regimes.filter((r) => v.gate[r]?.status === 'Corrected') : [];
   const figures = raw && ours && global ? [
     { label: 'Rainfall error', value: `${ours.rmse.toFixed(1)} mm`, delta: `${pct((raw.rmse - ours.rmse) / raw.rmse)} lower`, note: `RMSE · raw ${raw.rmse.toFixed(1)}, global fix ${global.rmse.toFixed(1)}` },
-    { label: 'Heavy-rain hit score', value: (ours.csi ?? 0).toFixed(2), delta: `+${pct(((ours.csi ?? 0) - (raw.csi ?? 0)) / (raw.csi || 1))}`, note: `CSI at ≥ 64.5 mm · raw ${(raw.csi ?? 0).toFixed(2)}` },
+    { label: 'Heavy-rain hit score', value: (ours.csi ?? 0).toFixed(2), delta: `${(ours.csi ?? 0) >= (raw.csi ?? 0) ? '+' : '−'}${pct(Math.abs(((ours.csi ?? 0) - (raw.csi ?? 0)) / (raw.csi || 1)))}`, note: `CSI at ≥ 64.5 mm · raw ${(raw.csi ?? 0).toFixed(2)}` },
     { label: 'Heavy rain caught', value: pct(ours.pod ?? 0), delta: `was ${pct(raw.pod ?? 0)}`, note: 'Probability of detection · ≥ 64.5 mm' },
   ] : [];
 
   return (
     <section className="evidence">
       <Reveal className="evidence-head">
-        <span className="label">Measured on a season the models never saw</span>
-        <h2 className="display section-display">Better where it matters — <em>and only where it’s proven.</em></h2>
+        <span className="label">2025 synthetic test season</span>
+        <h2 className="display section-display">What changed after correction?</h2>
+        <p className="evidence-context">The delivered forecast, including raw fallbacks, compared with raw rainfall and a global correction. These are retrospective synthetic results: the gate was chosen on the same season. They do not measure live forecast skill.</p>
       </Reveal>
       <div className="evidence-grid">
         {!v ? Array.from({ length: 3 }, (_, i) => <div key={i} className="figure"><Skeleton height={90} /></div>) : figures.map((f, i) => (
@@ -84,7 +84,7 @@ function Evidence() {
         ))}
         {v && (
           <Reveal delay={0.18} className="figure figure-gate">
-            <span className="figure-label">Corrections live</span>
+            <span className="figure-label">Regimes passing the demo gate</span>
             <strong className="figure-value num">{passed.length}<span> of {v.regimes.length}</span></strong>
             <span className="figure-note">regimes passed the verification gate</span>
             <ul className="gate-mini">
@@ -114,8 +114,8 @@ function DistrictJump() {
   return (
     <Reveal as="section" className="jump">
       <div>
-        <h2 className="display section-display">What’s coming for <em>your district?</em></h2>
-        <p>Five days of corrected rainfall, heavy-rain chances and the weather regime behind them.</p>
+        <h2 className="display section-display">Find your district.</h2>
+        <p>Compare rainfall estimates and heavy-rain chances for the next five days.</p>
       </div>
       <form className="jump-form" onSubmit={submit} role="search">
         <label className="input input-icon jump-input">
@@ -134,19 +134,19 @@ export default function Overview() {
     <div className="page overview">
       <section className="hero">
         <div className="hero-copy">
-          <m.span className="label" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
-            Regime-aware rainfall post-processing · India
-          </m.span>
-          <m.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.05 }}>
-            A clearer rainfall forecast for <em>every monsoon pattern.</em>
-          </m.h1>
-          <m.p className="lead" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.12 }}>
-            MonsoonLens reads the weather regime behind each district forecast, corrects the model’s rainfall for it, and publishes a correction only where held-out evidence says it helps.
-          </m.p>
-          <m.div className="hero-actions" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.2 }}>
-            <Link className="btn btn-primary btn-lg" to="/forecast"><MapPinned size={17} aria-hidden /> Open the forecast map</Link>
-            <Link className="btn btn-ghost btn-lg" to="/method">How it works <ArrowRight size={16} aria-hidden /></Link>
-          </m.div>
+          <span className="label">India / District rainfall outlook</span>
+          <h1>The monsoon,<br />district by district.</h1>
+          <p className="lead">Explore the next five days of rain, the weather pattern behind it, and where a correction may help.</p>
+          <div className="hero-actions">
+            <Link className="btn btn-primary btn-lg" to="/forecast"><MapPinned size={17} aria-hidden /> Explore the forecast</Link>
+            <Link className="link" to="/method">See how it works <ArrowRight size={16} aria-hidden /></Link>
+          </div>
+          <dl className="hero-facts">
+            <div><dt>Coverage</dt><dd>781 districts</dd></div>
+            <div><dt>Outlook</dt><dd>1–5 days</dd></div>
+            <div><dt>Weather patterns</dt><dd>6 regimes</dd></div>
+          </dl>
+          <p className="hero-note">Research prototype · Live NWP input, correction trained on synthetic data.</p>
         </div>
         <LiveHero />
       </section>
@@ -157,7 +157,7 @@ export default function Overview() {
         <Reveal className="section-head">
           <div>
             <span className="label">How it works</span>
-            <h2 className="display section-display">Four steps, <em>each one checked.</em></h2>
+            <h2 className="display section-display">From model rainfall to a district outlook.</h2>
           </div>
           <Link to="/method" className="link">The full method <ArrowRight size={14} aria-hidden /></Link>
         </Reveal>

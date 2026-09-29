@@ -9,12 +9,32 @@ export const Forecast = z.object({
 export type Forecast = z.infer<typeof Forecast>;
 export const ForecastList = z.object({ items: z.array(Forecast), total: z.number(), date: z.string(), lead: z.number(), layer: z.string() });
 export type ForecastList = z.infer<typeof ForecastList>;
-export type District = Forecast & { regime_probabilities: Record<string, number>; gate_reason: string; advisory: string; drivers: {name: string; value: number}[]; season?: { days: number; heavy_days: number; rmse_raw: number; rmse_served: number } };
+export type District = Forecast & { lead?: number; regime_probabilities: Record<string, number>; gate_reason: string; advisory: string; drivers: {name: string; value: number}[]; season?: { days: number; heavy_days: number; rmse_raw: number; rmse_served: number } };
 export type Score = { rmse: number; bias: number; pod: number | null; far: number | null; csi: number | null; ets: number | null; hits: number; misses: number; false_alarms: number; correct_negatives: number; brier?: number; brier_skill?: number | null; fss: Record<'1' | '3' | '5', number | null> };
-export type Verification = { training_rows: number; validation_rows: number; test_rows: number; regimes: string[]; thresholds: number[]; classifier: { confusion_matrix: number[][]; per_regime: {regime: string; precision: number; recall: number; support: number}[] }; scores: Record<string, Record<string, Record<string, Score>>>; gate: Record<string, Gate>; reliability: Record<string, {forecast: number; observed: number; count: number}[]> };
+export type Verification = { subset_rows: Record<string, number>; delivered_evaluation: string; reliability_by_group: Record<string, Record<string, {forecast: number; observed: number; count: number}[]>>; training_rows: number; validation_rows: number; test_rows: number; regimes: string[]; thresholds: number[]; classifier: { confusion_matrix: number[][]; per_regime: {regime: string; precision: number; recall: number; support: number}[] }; scores: Record<string, Record<string, Record<string, Score>>>; gate: Record<string, Gate>; reliability: Record<string, {forecast: number; observed: number; count: number}[]> };
 export type Gate = { status: string; reason: string; events: number; confidence_intervals?: Record<string, [number, number]> };
 export type Meta = { dates: string[]; district_count: number; regimes?: string[]; thresholds?: number[] };
 export type Alert = { district_id: string; district: string; state: string; probability: number; dominant_regime: string; gate_status: string; served_mm: number };
+
+export type ProbabilityKey = 'prob_64_5' | 'prob_115_6' | 'prob_204_5';
+export function compareAlerts(a: Forecast, b: Forecast, key: ProbabilityKey, byChance: boolean) {
+  return (byChance ? 0 : LEVELS.indexOf(warningLevel(b)) - LEVELS.indexOf(warningLevel(a))) || b[key] - a[key] || a.district.localeCompare(b.district);
+}
+
+export function alertsCsv(rows: Forecast[], key: ProbabilityKey, context: { date: string; lead: number; source: string; fetchedAt: string }) {
+  const escape = (value: string | number) => {
+    const text = String(value);
+    // Keep spreadsheet applications from treating district names as formulas.
+    const safe = typeof value === 'string' && /^[=+@\-\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const threshold = key.slice(5).replace('_', '.');
+  const header = ['district_id', 'district', 'state', 'level', 'action', 'probability_0_to_1', 'threshold_mm_per_24h', 'valid_date', 'lead_days', 'source', 'run_fetched_at_utc', 'served_mm_per_24h', 'raw_mm_per_24h', 'regime', 'correction'];
+  return [header, ...rows.map((r) => {
+    const level = warningLevel(r);
+    return [r.district_id, r.district, r.state, level.name, level.action, r[key], threshold, context.date, context.lead, context.source, context.fetchedAt, r.served_mm, r.raw_mm, r.dominant_regime, r.gate_status];
+  })].map((row) => row.map(escape).join(',')).join('\r\n');
+}
 
 export async function get<T>(url: string): Promise<T> {
   const response = await fetch(`/api/v1${url}`);
@@ -64,6 +84,8 @@ const rainRamp: Record<Theme, string[]> = {
   dark: ['#162538', '#1c3f6b', '#1f5596', '#3179cf', '#5598e7', '#9ec5f4', '#dce9fb'],
 };
 export function rainColor(value: number, theme: Theme = 'light') { return rainRamp[theme][rainBand(value)]; }
+export const noObservationColor = (theme: Theme) => theme === 'dark' ? '#68625b' : '#bdb7ae';
+export const observationColor = (value: number | null, theme: Theme) => value === null ? noObservationColor(theme) : rainColor(value, theme);
 export const rainLegend = (theme: Theme) => rainRamp[theme];
 
 // Diverging blue ↔ red with a neutral grey midpoint: drier (red) ← no change → wetter (blue).
@@ -71,9 +93,13 @@ const diffRamp: Record<Theme, string[]> = {
   light: ['#b83a37', '#eba59c', '#e9e6df', '#9ec5f4', '#256abf'],
   dark: ['#e66767', '#7c3a36', '#383835', '#2d5f9f', '#86b6ef'],
 };
+export const diffLabels = ['Drier by 15+ mm', 'Drier by 3–15 mm', 'Within ±3 mm', 'Wetter by 3–15 mm', 'Wetter by 15+ mm'];
+/** Bin for the served-vs-raw change (mm): [≤ −15 | −15..−3 | ±3 | 3..15 | ≥ 15]. */
+export function diffIndex(value: number) {
+  return value <= -15 ? 0 : value < -3 ? 1 : value <= 3 ? 2 : value < 15 ? 3 : 4;
+}
 export function diffColor(value: number, theme: Theme = 'light') {
-  const i = value <= -15 ? 0 : value < -3 ? 1 : value <= 3 ? 2 : value < 15 ? 3 : 4;
-  return diffRamp[theme][i];
+  return diffRamp[theme][diffIndex(value)];
 }
 export const diffLegend = (theme: Theme) => diffRamp[theme];
 
@@ -98,8 +124,8 @@ export const regimeBlurb: Record<string, string> = {
 
 /** Series colours for the three-model comparison (first three validated slots). */
 export const modelColors: Record<Theme, Record<string, string>> = {
-  light: { 'Regime-aware': '#2a78d6', Global: '#eb6834', Raw: '#1baf7a' },
-  dark: { 'Regime-aware': '#3987e5', Global: '#d95926', Raw: '#199e70' },
+  light: { 'Regime-aware': '#2a78d6', Global: '#eb6834', Raw: '#1baf7a', Delivered: '#7156a5' },
+  dark: { 'Regime-aware': '#3987e5', Global: '#d95926', Raw: '#199e70', Delivered: '#b49ade' },
 };
 
 // Sequential warm ramp for heavy-rain chance (5 bins).

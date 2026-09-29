@@ -33,11 +33,12 @@ export function Section({ title, description, action, children }: { title: strin
   );
 }
 
-/** Fades content up the first time it scrolls into view. */
+/** A brief entrance for secondary sections; reduced-motion users see content immediately. */
 export function Reveal({ children, delay = 0, className, as = 'div' }: { children: ReactNode; delay?: number; className?: string; as?: 'div' | 'section' | 'li' | 'article' }) {
   const Tag = m[as];
+  const reduced = useReducedMotion();
   return (
-    <Tag className={className} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: '-40px' }} transition={{ duration: 0.5, ease, delay }}>
+    <Tag className={className} initial={reduced ? false : { opacity: 0, y: 6 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: reduced ? 0 : 0.22, ease, delay: reduced ? 0 : Math.min(delay, 0.08) }}>
       {children}
     </Tag>
   );
