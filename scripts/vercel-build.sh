@@ -9,5 +9,6 @@ $PY -m backend.data.generate_synthetic ${DISTRICTS:+--districts $DISTRICTS}
 $PY -m backend.data.validate
 $PY -m backend.pipeline.train
 $PY -m backend.export_vercel --data-only
+$PY -c "from backend.lite_app import write_snapshot; write_snapshot()" || echo "Live snapshot skipped (Open-Meteo unavailable); first live visit will fetch"
 rm -f backend/data/synthetic.parquet backend/data/monsoonlens.db backend/data/models.joblib
 cd frontend && npx --yes pnpm@9.15.9 install --frozen-lockfile && npx --yes pnpm@9.15.9 build

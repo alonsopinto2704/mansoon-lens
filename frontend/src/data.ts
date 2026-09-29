@@ -8,20 +8,25 @@ export const useVerification = () => useQuery({ queryKey: ['verification'], quer
 
 export type LiveList = { items: District[]; total: number; lead: number; date: string | null; status: 'fetching' | 'ready' | 'error' | 'idle'; error: string | null; fetched_at?: string; dates?: string[]; source?: string };
 
-/** Live NWP run (all five lead days in one response, so a CDN caches one copy); selects the chosen lead. Polls while the server is still fetching. */
+/**
+ * Live NWP run for the selected lead. Paints instantly from the last cached run (`?cached=1` never waits
+ * on Open-Meteo) while the full request refreshes in the background, then swaps in the newer run.
+ * Both responses hold all five lead days, so the CDN keeps one copy.
+ */
 export function useLive(enabled = true) {
   const lead = useForecastStore((s) => s.lead);
   const select = useCallback((d: LiveList): LiveList => {
     const items = d.items.filter((i) => (i as District & { lead: number }).lead === lead);
     return { ...d, lead, items, total: items.length, date: d.dates?.[lead - 1] ?? null };
   }, [lead]);
-  return useQuery({
-    queryKey: ['live'],
-    queryFn: () => get<LiveList>('/live'),
-    select,
-    enabled,
-    refetchInterval: (q) => (q.state.data?.status === 'fetching' || q.state.data?.status === 'idle' ? 5000 : 10 * 60 * 1000),
-  });
+  const cached = useQuery({ queryKey: ['live', 'cached'], queryFn: () => get<LiveList>('/live?cached=1'), select, enabled, retry: false, staleTime: 5 * 60 * 1000 });
+  const fresh = useQuery({ queryKey: ['live'], queryFn: () => get<LiveList>('/live'), select, enabled, retry: 1, refetchInterval: 15 * 60 * 1000 });
+  const newer = (a?: LiveList, b?: LiveList) => (a?.fetched_at ?? '') >= (b?.fetched_at ?? '');
+  const useFresh = Boolean(fresh.data?.items.length) && newer(fresh.data, cached.data);
+  if (useFresh || !cached.data?.items.length) return { ...fresh, refreshing: false };
+  // Showing the cached run: a failed refresh is reported as a status, not as a page error.
+  const data = fresh.isError || fresh.data?.status === 'error' ? { ...cached.data, status: 'error' as const } : cached.data;
+  return { ...cached, data, refreshing: fresh.isFetching };
 }
 
 /** Held-out season rows for the selected date and lead (every map layer is derived client-side). */

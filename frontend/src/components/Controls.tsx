@@ -58,11 +58,11 @@ export function SourceNote() {
   }
   const d = live.data;
   if (live.isError) return <p className="source-note source-note-warn">Live NWP feed unavailable ({live.error instanceof Error ? live.error.message : 'network error'}). Switch to Verified season.</p>;
-  if (!d || d.status === 'fetching' && !d.items.length) return <p className="source-note"><span className="live-dot" /> Fetching today’s NWP run for 781 districts from Open-Meteo — about a minute on first load…</p>;
+  if (!d || d.status === 'fetching' && !d.items.length) return <p className="source-note"><span className="live-dot" /> Fetching today’s NWP run for 781 districts from Open-Meteo…</p>;
   if (!d.items.length) return <p className="source-note source-note-warn">Live NWP feed unavailable{d.error ? ` (${d.error})` : ''}. Switch to Verified season.</p>;
   const at = d.fetched_at ? new Date(d.fetched_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : '';
   if (d.status === 'error') return <p className="source-note source-note-warn" role="status">Live refresh failed. Showing the last available run{at ? `, fetched ${at}` : ''}. <button className="link" onClick={() => live.refetch()}>Try again</button></p>;
   return (
-    <p className="source-note"><span className="live-dot" /> Live raw rainfall from Open-Meteo’s global NWP (fetched {at}), corrected by MonsoonLens. The correction was trained and verified on sample data, so live corrected values are unverified. For warnings, follow IMD.</p>
+    <p className="source-note"><span className="live-dot" /> Live raw rainfall from Open-Meteo’s global NWP (run fetched {at}{live.refreshing ? ' · checking for a newer run…' : ''}), corrected by MonsoonLens. The correction was trained and verified on sample data, so live corrected values are unverified. For warnings, follow IMD.</p>
   );
 }

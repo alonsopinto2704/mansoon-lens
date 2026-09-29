@@ -13,6 +13,7 @@ import csv
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -95,12 +96,19 @@ def row(d, lead, i, date):
 
 # ---------- live NWP ----------
 
-def _fetch(lats, lons):
+def _fetch(lats, lons, retries=3):
+    """One Open-Meteo multi-location call; backs off on HTTP 429 (Vercel egress IPs are shared)."""
     query = urllib.parse.urlencode({"latitude": ",".join(f"{v:.3f}" for v in lats), "longitude": ",".join(f"{v:.3f}" for v in lons),
                                     "daily": ",".join(DAILY), "timezone": "Asia/Kolkata", "forecast_days": 6})
-    with urllib.request.urlopen(f"{OPEN_METEO}?{query}", timeout=60) as response:
-        payload = json.load(response)
-    return payload if isinstance(payload, list) else [payload]
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(f"{OPEN_METEO}?{query}", timeout=60) as response:
+                payload = json.load(response)
+            return payload if isinstance(payload, list) else [payload]
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or attempt == retries:
+                raise
+            time.sleep(15 * (attempt + 1))
 
 
 def _z(a):
@@ -112,14 +120,17 @@ def _z(a):
 
 
 def live_run():
-    """Fetch all districts (paced under Open-Meteo's ~600 calls/minute), predict leads 1–5."""
+    """Fetch every district's NWP (deduplicated to a 0.5° grid, paced under Open-Meteo's per-minute limit), predict leads 1–5."""
     meta = districts()
     lats, lons = np.array([d["lat"] for d in meta]), np.array([d["lon"] for d in meta])
-    payloads = []
-    for start in range(0, len(meta), 100):
+    # ponytail: 0.5° grid (644 points for 781 districts) matches NWP resolution and cuts API calls ~18%.
+    grid, cell = np.unique(np.column_stack([np.round(lats * 2) / 2, np.round(lons * 2) / 2]), axis=0, return_inverse=True)
+    points = []
+    for start in range(0, len(grid), 100):
         if start:
-            time.sleep(11)
-        payloads += _fetch(lats[start:start + 100], lons[start:start + 100])
+            time.sleep(13)
+        points += _fetch(grid[start:start + 100, 0], grid[start:start + 100, 1])
+    payloads = [points[k] for k in cell.reshape(-1)]
     grab = lambda key: np.array([[np.nan if v is None else v for v in p["daily"][key]] for p in payloads], dtype=float)
     rain, wind, rh, mslp = (grab(k) for k in DAILY)
     days = payloads[0]["daily"]["time"]
@@ -135,6 +146,30 @@ def live_run():
             rows.append({"district_id": d["district_id"], "date": days[lead], "lead": lead, "moisture": x[i, 3], "wind": x[i, 4], "mslp": x[i, 5],
                          **{k: (v[i] if isinstance(v, list) else round(float(v[i]), 4)) for k, v in out.items()}})
     return {"fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "rows": rows}
+
+
+def _age(run):
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(run["fetched_at"])).total_seconds()
+
+
+@lru_cache
+def snapshot():
+    """Live run fetched at build time (scripts/vercel-build.sh), so the first visitor never waits."""
+    try:
+        return load_json("live_snapshot.json")
+    except (OSError, ValueError):
+        return None
+
+
+def best_run():
+    """Newest run available without calling Open-Meteo: this instance's memo or the build-time snapshot."""
+    runs = [r for r in (_live["data"], snapshot()) if r]
+    return max(runs, key=lambda r: r["fetched_at"]) if runs else None
+
+
+def write_snapshot():
+    (DATA / "live_snapshot.json").write_text(json.dumps(live_run()))
+    print("Live snapshot written")
 
 
 def create_app():
@@ -206,15 +241,18 @@ def create_app():
         if lead is not None and lead not in {"1", "2", "3", "4", "5"}:
             return error("Lead must be 1–5")
         status, message = "ready", None
-        if _live["data"] is None or time.time() - _live["at"] > LIVE_TTL_S:
+        run = best_run()
+        # `cached=1` never calls Open-Meteo, so pages paint at once; the plain request refreshes when the run is stale.
+        if request.args.get("cached") != "1" and (run is None or _age(run) > LIVE_TTL_S):
             try:
                 _live.update(data=live_run(), at=time.time())
-            except Exception as exc:  # keep a warm instance's last run; otherwise report unavailable
+                run = _live["data"]
+            except Exception as exc:  # rate limit or network: serve the last run, labelled with its fetch time
                 status, message = "error", f"{type(exc).__name__}: {exc}"
-        cached = _live["data"]
+        cached = run
         if not cached:
-            response = jsonify({"status": "error", "error": message, "items": [], "age_s": None})
-            response.headers["Cache-Control"] = "no-store"
+            response = jsonify({"status": "error", "error": message or "No live run available yet", "items": [], "age_s": None})
+            response.headers["Cache-Control"] = "public, s-maxage=60" if message else "no-store"  # don't hammer the API on failure
             return response, 503
         names = {m["district_id"]: m for m in districts()}
         drop = {"moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon", *(f"regime_{i}" for i in range(6))}
@@ -223,11 +261,13 @@ def create_app():
         for item in items:
             item["value"] = item["served_mm"]
         dates = sorted({r["date"] for r in cached["rows"]})
-        response = jsonify({"status": status, "error": message, "age_s": time.time() - _live["at"], "fetched_at": cached["fetched_at"], "dates": dates,
+        response = jsonify({"status": status, "error": message, "age_s": _age(cached), "fetched_at": cached["fetched_at"], "dates": dates,
                             "lead": int(lead) if lead else None, "date": items[0]["date"] if items else None, "items": items, "total": len(items),
                             "source": "Open-Meteo best-match NWP (CC BY 4.0)"})
         # One CDN copy per 3 h (stale while revalidating) keeps the free Open-Meteo quota safe.
-        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=10800, stale-while-revalidate=86400" if status == "ready" else "no-store"
+        fresh_for = max(60, int(LIVE_TTL_S - _age(cached)))
+        response.headers["Cache-Control"] = (f"public, max-age=60, s-maxage={fresh_for}, stale-while-revalidate=86400" if status == "ready"
+                                             else "public, max-age=30, s-maxage=120")
         return response
 
     @app.get("/api/v1/verification")

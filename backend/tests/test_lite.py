@@ -94,3 +94,26 @@ def test_lite_live_run(lite_data, monkeypatch):
     assert len(items) == 5 * len(lite_app.districts()) and {i["lead"] for i in items} == {1, 2, 3, 4, 5}
     assert all(i["observed_mm"] is None and 0 <= i["prob_64_5"] <= 1 and i["regime_probabilities"] for i in items)
     assert lite_app.create_app().test_client().get("/api/v1/live?lead=9").status_code == 400
+
+
+def test_live_cached_never_fetches_and_snapshot_first(lite_data, monkeypatch):
+    lite_app = lite_data
+    calls = []
+    monkeypatch.setattr(lite_app, "_fetch", lambda *a: calls.append(1) or (_ for _ in ()).throw(OSError("offline")))
+    monkeypatch.setattr(lite_app, "_live", {"data": None, "at": 0.0})
+    monkeypatch.setattr(lite_app, "snapshot", lambda: None)
+    client = lite_app.create_app().test_client()
+    assert client.get("/api/v1/live?cached=1").status_code == 503 and not calls  # nothing cached, no API call
+    failed = client.get("/api/v1/live")
+    assert failed.status_code == 503 and "s-maxage" in failed.headers["Cache-Control"] and len(calls) == 1
+
+    from datetime import datetime, timedelta, timezone
+    old = {"fetched_at": (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat(timespec="seconds"),
+           "rows": [{"district_id": lite_app.districts()[0]["district_id"], "date": "2026-09-30", "lead": 1, "moisture": 0, "wind": 0, "mslp": 0,
+                     "raw_mm": 3.0, "served_mm": 3.0, "corrected_p10": 1.0, "corrected_p50": 3.0, "corrected_p90": 6.0, "dominant_regime": "Active",
+                     "gate_status": "Serving raw", "prob_64_5": 0.01, "prob_115_6": 0.0, "prob_204_5": 0.0, **{f"regime_{r}": 1 / 6 for r in range(6)}}]}
+    monkeypatch.setattr(lite_app, "snapshot", lambda: old)
+    quick = client.get("/api/v1/live?cached=1").json
+    assert quick["status"] == "ready" and len(quick["items"]) == 1 and len(calls) == 1  # stale snapshot served instantly
+    stale = client.get("/api/v1/live")  # refresh fails -> last run, flagged, briefly cached
+    assert stale.status_code == 200 and stale.json["status"] == "error" and stale.json["items"] and "s-maxage=120" in stale.headers["Cache-Control"]
