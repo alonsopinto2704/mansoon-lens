@@ -762,3 +762,6 @@ a.card:hover, button.card:hover, .regime-card:hover { box-shadow: none; }
 .chart-tip { max-width: min(260px, 72vw); min-width: 0; }
 .decision-q { font-weight: 600; }
 .dropzone-empty .btn { margin-top: 8px; }
+
+/* Alerts worst-of-5 */
+.alerts-span { margin: 0 0 16px; }

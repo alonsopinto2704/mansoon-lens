@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toggleSaved } from './watchlist';
-import { alertsCsv, compareAlerts, observationColor, rainColor, stateSummary, type Forecast } from './lib';
+import { alertsCsv, compareAlerts, observationColor, rainColor, stateSummary, worstDay, type Forecast } from './lib';
 import { readForecastView } from './forecastUrl';
 
 describe('forecast context and interpretation', () => {
@@ -22,6 +22,14 @@ describe('forecast context and interpretation', () => {
     expect(csv).toContain('"threshold_mm_per_24h","valid_date","lead_days","source","run_fetched_at_utc"');
     expect(csv).toContain('"0.2","115.6","2025-07-01","3","synthetic_2025",""');
     expect(csv).toContain('"\'=test,""name"""');
+  });
+  it('picks the worst lead per district (level, then chance, then earliest) and exports that day', () => {
+    const r = (lead: number, p: number, p2 = 0, id = 'a') => ({ district_id: id, district: id, state: 'S', lead, prob_64_5: p, prob_115_6: p2, prob_204_5: 0, served_mm: 1, raw_mm: 1, dominant_regime: 'x', gate_status: 'y' }) as Forecast & { lead: number };
+    const rows = worstDay([r(1, .4), r(2, .7), r(3, .65), r(4, .7), r(1, .1, 0, 'b'), r(2, .05, 0, 'b')], 'prob_64_5');
+    expect(rows.map((x) => [x.district_id, x.lead])).toEqual([['a', 2], ['b', 1]]);
+    const csv = alertsCsv(rows, 'prob_64_5', { date: '', lead: 0, source: 's', fetchedAt: '' }, (x) => ({ date: `d${(x as typeof rows[0]).lead}`, lead: (x as typeof rows[0]).lead }));
+    expect(csv).toContain('"64.5","d2","2","s"');
+    expect(csv).toContain('"64.5","d1","1","s"');
   });
   it('never paints a missing observation as dry rainfall in either theme', () => {
     for (const theme of ['light', 'dark'] as const) {

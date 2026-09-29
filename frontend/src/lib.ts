@@ -20,7 +20,7 @@ export function compareAlerts(a: Forecast, b: Forecast, key: ProbabilityKey, byC
   return (byChance ? 0 : LEVELS.indexOf(warningLevel(b)) - LEVELS.indexOf(warningLevel(a))) || b[key] - a[key] || a.district.localeCompare(b.district);
 }
 
-export function alertsCsv(rows: Forecast[], key: ProbabilityKey, context: { date: string; lead: number; source: string; fetchedAt: string }) {
+export function alertsCsv(rows: Forecast[], key: ProbabilityKey, context: { date: string; lead: number; source: string; fetchedAt: string }, rowDay?: (r: Forecast) => { date: string; lead: number }) {
   const escape = (value: string | number) => {
     const text = String(value);
     // Keep spreadsheet applications from treating district names as formulas.
@@ -31,7 +31,8 @@ export function alertsCsv(rows: Forecast[], key: ProbabilityKey, context: { date
   const header = ['district_id', 'district', 'state', 'level', 'action', 'probability_0_to_1', 'threshold_mm_per_24h', 'valid_date', 'lead_days', 'source', 'run_fetched_at_utc', 'served_mm_per_24h', 'raw_mm_per_24h', 'regime', 'correction'];
   return [header, ...rows.map((r) => {
     const level = warningLevel(r);
-    return [r.district_id, r.district, r.state, level.name, level.action, r[key], threshold, context.date, context.lead, context.source, context.fetchedAt, r.served_mm, r.raw_mm, r.dominant_regime, r.gate_status];
+    const day = rowDay?.(r) ?? context;
+    return [r.district_id, r.district, r.state, level.name, level.action, r[key], threshold, day.date, day.lead, context.source, context.fetchedAt, r.served_mm, r.raw_mm, r.dominant_regime, r.gate_status];
   })].map((row) => row.map(escape).join(',')).join('\r\n');
 }
 
@@ -162,6 +163,14 @@ export function warningLevel(i: { prob_64_5: number; prob_115_6: number; prob_20
   if (i.prob_64_5 >= 0.6 || i.prob_115_6 >= 0.3) return LEVELS[2];
   if (i.prob_64_5 >= 0.3) return LEVELS[1];
   return LEVELS[0];
+}
+
+/** One row per district across leads: highest warning level, then highest chance for `key`, then earliest lead. */
+export function worstDay<T extends Forecast & { lead?: number }>(items: T[], key: ProbabilityKey): T[] {
+  const best = new Map<string, T>();
+  const worse = (a: T, b: T) => LEVELS.indexOf(warningLevel(a)) - LEVELS.indexOf(warningLevel(b)) || a[key] - b[key] || (b.lead ?? 0) - (a.lead ?? 0); // >0: a is worse (or same but earlier)
+  for (const r of items) { const b = best.get(r.district_id); if (!b || worse(r, b) > 0) best.set(r.district_id, r); }
+  return [...best.values()];
 }
 
 /** Districts per warning level for each state with any yellow or higher, most severe states first. */

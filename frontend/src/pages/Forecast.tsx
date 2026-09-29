@@ -6,7 +6,7 @@ import {
   noObservationColor, observationColor, diffColor, diffIndex, diffLegend, diffLabels, escapeHtml, LEVELS, mm, pct, probColor, probLabels, probLegend, rainBand, rainBands, rainColor, rainLegend,
   levelFill, regimeColor, REGIMES, titleDate, warningLevel, type District, type Forecast, type Theme,
 } from '../lib';
-import { useForecastStore, useResolvedTheme, type Layer } from '../store';
+import { useForecastStore, useResolvedTheme, withForecastView, type Layer } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
 import { DayStrip, SourceControls, SourceNote } from '../components/Controls';
@@ -67,7 +67,7 @@ export default function ForecastPage() {
   const setSelected = (id: string | null) => {
     const next = new URLSearchParams(params);
     if (id) next.set('district', id); else next.delete('district');
-    setParams(next, { replace: true });
+    setParams(withForecastView(next), { replace: true });
   };
   const [search, setSearch] = useState('');
   // [ / ] step the live lead day; ignored while typing or with modifiers.

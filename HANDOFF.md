@@ -26,7 +26,8 @@ Build the attached MonsoonLens brief (SIH 2026, PS 26080) as a runnable local we
 - Alerts "All" ranks purely by chance; CSV adds threshold, valid date, lead, source and run time. Observed layer uses a neutral "No observation" colour.
 - Later the same day: saved-district watchlist (`frontend/src/watchlist.ts`, star in the drawer, table on Overview); per-state rollup on Alerts; five-day live total in the drawer; `[`/`]` and arrow keys switch days; plainer information-first UI (no eyebrow caps, scroll fades or numbered cards).
 - Backend: `backend/common.py` holds shared validators, upload checks and CSV/PDF builders for both `app.py` and `lite_app.py`. Bad input returns 400 `{error, code, details}`; unknown `/api/v1/*` returns JSON 404; NaN serialises as `null`. Pydantic is no longer used.
-- Tests: 65 pytest (incl. `test_validation.py`, parametrised over both apps), 13 Vitest, `tsc -b`, `vite build` pass. `backend/adapters/` is unused stub code (kept; delete if real adapters are not planned).
+- Alerts "Worst of 5 days" (live, `?span=5`): one row per district at its most severe day (`worstDay` in lib.ts), with per-row dates in the CSV. Pages write URL params through `withForecastView` (store.ts) so a stale lead can never overwrite the store. A page error boundary reloads once when a chunk is missing after a redeploy.
+- Tests: 65 pytest (incl. `test_validation.py`, parametrised over both apps), 14 Vitest, `tsc -b`, `vite build` pass. `backend/adapters/` is unused stub code (kept; delete if real adapters are not planned).
 
 ## Exact local commands on this Windows host
 

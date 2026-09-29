@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronRight, Download, Search } from 'lucide-react';
 import { m } from 'motion/react';
-import { useForecast } from '../data';
-import { alertsCsv, compareAlerts, stateSummary, escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, titleDate, warningLevel, type District, type Forecast, type Level } from '../lib';
-import { useForecastStore, useResolvedTheme } from '../store';
+import { useForecast, useLiveRun } from '../data';
+import { alertsCsv, compareAlerts, stateSummary, escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, titleDate, warningLevel, worstDay, type District, type Forecast, type Level } from '../lib';
+import { useForecastStore, useResolvedTheme, withForecastView } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
 import { DayStrip, SourceControls, SourceNote } from '../components/Controls';
@@ -17,6 +17,7 @@ const thresholds = [
 ] as const;
 type Threshold = (typeof thresholds)[number]['value'];
 type LevelFilter = 'yellow' | 'orange' | 'red' | 'all';
+const dayLabel = (iso?: string) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '') : '');
 const rankOf = (l: Level) => LEVELS.indexOf(l);
 const minRank: Record<LevelFilter, number> = { all: 0, yellow: 1, orange: 2, red: 3 };
 
@@ -31,7 +32,7 @@ function exportCsv(content: string, name: string) {
 
 export default function AlertsPage() {
   const theme = useResolvedTheme();
-  const { lead, source } = useForecastStore();
+  const { lead, source, setLead } = useForecastStore();
   const [threshold, setThreshold] = useState<Threshold>('64.5');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('yellow');
   const [mapMode, setMapMode] = useState<'level' | 'chance'>('level');
@@ -42,13 +43,21 @@ export default function AlertsPage() {
   const selected = params.get('district');
   const setSelected = (id: string | null) => {
     const next = new URLSearchParams(params);
+    const row = worst ? all.find((i) => i.district_id === id) : undefined;
+    if (row?.lead) setLead(row.lead); // drawer and day strip follow the row's own day
     if (id) next.set('district', id); else next.delete('district');
-    setParams(next, { replace: true });
+    setParams(withForecastView(next), { replace: true });
   };
   const forecast = useForecast();
-  const all: Forecast[] = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
-  const date = forecast.data?.date ?? '';
+  const run = useLiveRun(source === 'live');
   const t = thresholds.find((x) => x.value === threshold)!;
+  const worst = source === 'live' && params.get('span') === '5'; // shareable via ?span=5
+  const setWorst = (on: boolean) => { const next = new URLSearchParams(params); if (on) next.set('span', '5'); else next.delete('span'); setParams(withForecastView(next), { replace: true }); };
+  const runItems = run.data?.items;
+  const all: (Forecast & { lead?: number })[] = useMemo(() => (worst ? worstDay(runItems ?? [], t.key) : forecast.data?.items ?? []), [worst, runItems, t.key, forecast.data]);
+  const date = worst ? '' : forecast.data?.date ?? '';
+  const leadOf = (i: Forecast) => (i as { lead?: number }).lead ?? lead;
+  const dayOf = (i: Forecast) => run.data?.dates?.[leadOf(i) - 1] ?? '';
   const states = useMemo(() => [...new Set(all.map((i) => i.state))].sort(), [all]);
   const counts = useMemo(() => LEVELS.map((l) => all.filter((i) => warningLevel(i).key === l.key).length), [all]);
   const items = useMemo(() => {
@@ -75,8 +84,8 @@ export default function AlertsPage() {
       <div className="quiet">
         <span className="quiet-mark" aria-hidden>✓</span>
         <div>
-          <strong>No district reaches yellow{date ? ` on ${titleDate(date, !(source === 'live'))}` : ''}.</strong>
-          <p>All {all.length} districts are green: none has a 30% or higher chance of ≥ 64.5 mm.{top ? <> The highest {t.label.toLowerCase()}-rain chance is <b>{pct(top[t.key])}</b> in <button className="link" onClick={() => setSelected(top.district_id)}>{top.district}</button>.</> : null}</p>
+          <strong>No district reaches yellow{worst ? ' in the next five days' : date ? ` on ${titleDate(date, !(source === 'live'))}` : ''}.</strong>
+          <p>All {all.length} districts are green{worst ? ' on every day' : ''}: none has a 30% or higher chance of ≥ 64.5 mm.{top ? <> The highest {t.label.toLowerCase()}-rain chance is <b>{pct(top[t.key])}</b> in <button className="link" onClick={() => setSelected(top.district_id)}>{top.district}</button>.</> : null}</p>
           <button className="btn btn-secondary mt" onClick={() => setLevelFilter('all')}>Show all districts ranked by chance</button>
         </div>
       </div>
@@ -88,15 +97,16 @@ export default function AlertsPage() {
       <header className="ws-head">
         <div>
           <span className="label">Heavy-rain alerts · IMD colour scheme</span>
-          <h1 className="ws-title">{date ? titleDate(date, !(source === 'live')) : loading ? 'Loading alerts…' : 'Alerts unavailable'}</h1>
+          <h1 className="ws-title">{worst ? 'Next five days' : date ? titleDate(date, !(source === 'live')) : loading ? 'Loading alerts…' : 'Alerts unavailable'}</h1>
         </div>
         <div className="ws-actions">
           <SourceControls />
-          <button className="btn btn-secondary" disabled={!ready || !items.length} onClick={() => exportCsv(alertsCsv(items, t.key, { date, lead, source: source === 'live' ? 'live_nwp_unverified_correction' : 'synthetic_2025', fetchedAt: forecast.data && 'fetched_at' in forecast.data ? forecast.data.fetched_at ?? '' : '' }), `monsoonlens-alerts-${source}-${date}-d${lead}-ge${threshold}mm.csv`)}><Download size={16} aria-hidden /> Export CSV</button>
+          <button className="btn btn-secondary" disabled={!ready || !items.length} onClick={() => exportCsv(alertsCsv(items, t.key, { date, lead, source: source === 'live' ? 'live_nwp_unverified_correction' : 'synthetic_2025', fetchedAt: forecast.data && 'fetched_at' in forecast.data ? forecast.data.fetched_at ?? '' : '' }, worst ? (i) => ({ date: dayOf(i), lead: leadOf(i) }) : undefined), `monsoonlens-alerts-${source}-${worst ? 'next5days' : `${date}-d${lead}`}-ge${threshold}mm.csv`)}><Download size={16} aria-hidden /> Export CSV</button>
         </div>
       </header>
 
-      <DayStrip />
+      <div onClick={(e) => { if (worst && (e.target as HTMLElement).closest('[role=tab]')) setWorst(false); }} onKeyDown={(e) => { if (worst && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) setWorst(false); }}><DayStrip /></div>
+      {source === 'live' && <div className="alerts-span"><Segmented id="alert-span" label="Forecast span" value={worst ? '5' : 'day'} onChange={(v) => setWorst(v === '5')} options={[{ value: 'day', label: 'Selected day' }, { value: '5', label: 'Worst of 5 days' }]} /></div>}
 
       <div className="level-tiles" role="group" aria-label="Districts by warning level">
         {[...LEVELS].reverse().map((l) => {
@@ -120,7 +130,7 @@ export default function AlertsPage() {
             <div className="map-wrap">
               <IndiaMap items={all} selected={selected} onSelect={setSelected}
                 color={(i) => (mapMode === 'level' ? levelFill(warningLevel(i), theme) : probColor(i[t.key], theme))}
-                tooltip={(i) => { const l = warningLevel(i); return `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Level</span><b><i class="tip-dot" style="background:${l.color}"></i>${l.name} · ${l.action}</b><span>${t.label} rain chance</span><b>${pct(i[t.key])}</b><span>Served</span><b>${mm(i.served_mm)}</b></div>`; }} />
+                tooltip={(i) => { const l = warningLevel(i); return `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Level</span><b><i class="tip-dot" style="background:${l.color}"></i>${l.name} · ${l.action}</b><span>${t.label} rain chance</span><b>${pct(i[t.key])}</b><span>Served</span><b>${mm(i.served_mm)}</b>${worst ? `<span>Day</span><b>${dayLabel(dayOf(i))}</b>` : ''}</div>`; }} />
               <div className="map-layers">
                 <Segmented id="alert-map" label="Map shows" value={mapMode} onChange={setMapMode} options={[{ value: 'level', label: 'Warning level' }, { value: 'chance', label: `Chance ≥ ${threshold} mm` }]} />
               </div>
@@ -176,7 +186,7 @@ export default function AlertsPage() {
         <div className="table-head table-head-tools">
           <div>
             <h2>{ready ? `${items.length} district${items.length === 1 ? '' : 's'}` : 'Districts'}</h2>
-            <p className="muted small">{levelFilter === 'all' ? 'Ranked by chance' : 'Ranked by level, then by chance'} of ≥ {threshold} mm in 24 h.</p>
+            <p className="muted small">{worst ? 'Worst day per district in the next five days. ' : ''}{levelFilter === 'all' ? 'Ranked by chance' : 'Ranked by level, then by chance'} of ≥ {threshold} mm in 24 h.</p>
           </div>
           <div className="table-tools">
             <Segmented id="level-filter" label="Minimum level" value={levelFilter} onChange={setLevelFilter}
@@ -196,7 +206,7 @@ export default function AlertsPage() {
         {!ready || !items.length ? <div className="pad">{feedback}</div> : (
           <div className="table-scroll">
             <table className="table">
-              <thead><tr><th>Level</th><th>District</th><th>Chance ≥ {threshold} mm</th><th className="align-right">Served</th><th>Regime</th><th>Correction</th><th><span className="sr-only">Details</span></th></tr></thead>
+              <thead><tr><th>Level</th><th>District</th>{worst && <th>Day</th>}<th>Chance ≥ {threshold} mm</th><th className="align-right">Served</th><th>Regime</th><th>Correction</th><th><span className="sr-only">Details</span></th></tr></thead>
               <tbody>
                 {items.slice(0, 300).map((i, n) => {
                   const l = levels.get(i.district_id) ?? warningLevel(i);
@@ -205,6 +215,7 @@ export default function AlertsPage() {
                       initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: Math.min(n, 12) * 0.02 }}>
                       <td><LevelChip level={l} /></td>
                       <td><strong>{i.district}</strong><small className="muted block">{i.state}</small></td>
+                      {worst && <td className="num">{dayLabel(dayOf(i))}</td>}
                       <td><div className="prob-cell"><Bar value={i[t.key]} color={probColor(Math.max(i[t.key], 0.3), theme)} /><b className="num">{pct(i[t.key])}</b></div></td>
                       <td className="num align-right">{mm(i.served_mm)}</td>
                       <td><span className="regime-tag"><i style={{ background: regimeColor(i.dominant_regime, theme) }} />{i.dominant_regime}</span></td>
@@ -221,7 +232,7 @@ export default function AlertsPage() {
       </div>
       <SourceNote />
 
-      <DistrictDrawer id={current ? selected : null} name={current?.district} state={current?.state} date={date} lead={lead} live={source === 'live' ? (current as District | undefined) : undefined} onClose={() => setSelected(null)} />
+      <DistrictDrawer id={current ? selected : null} name={current?.district} state={current?.state} date={current && worst ? dayOf(current) : date} lead={current && worst ? leadOf(current) : lead} live={source === 'live' ? (current as District | undefined) : undefined} onClose={() => setSelected(null)} />
     </div>
   );
 }

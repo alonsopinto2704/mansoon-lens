@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from
 import { AnimatePresence, m } from 'motion/react';
 import { Menu, Monitor, Moon, Sun, X } from 'lucide-react';
 import { useLive, useMeta } from './data';
-import { useForecastStore, useResolvedTheme } from './store';
+import { useForecastStore, useResolvedTheme, withForecastView } from './store';
 import { LoadingBlock, ease } from './components/ui';
 import { readForecastView } from './forecastUrl';
 
@@ -25,11 +25,7 @@ function ForecastLocation() {
         return;
       }
     }
-    const params = new URLSearchParams(location.search);
-    params.set('source', source);
-    params.set('lead', String(lead));
-    params.set('layer', layer);
-    if (source === 'season' && date) params.set('date', date); else params.delete('date');
+    const params = withForecastView(new URLSearchParams(location.search));
     const search = `?${params}`;
     if (search !== location.search) {
       previous.current = location.pathname + search;

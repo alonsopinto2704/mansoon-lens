@@ -44,3 +44,13 @@ export function useResolvedTheme(): Theme {
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   return theme;
 }
+
+/** Writes the current forecast view onto URL params, so a page's own param update never carries a stale view back into the store. */
+export function withForecastView(params: URLSearchParams) {
+  const { source, lead, layer, date } = useForecastStore.getState();
+  params.set('source', source);
+  params.set('lead', String(lead));
+  params.set('layer', layer);
+  if (source === 'season' && date) params.set('date', date); else params.delete('date');
+  return params;
+}
