@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
-import { Info, X } from 'lucide-react';
-import { formatDate, gateReason, get, mm, pct, regimeColor, type District } from '../lib';
+import { Check, Info, Link2, X } from 'lucide-react';
+import { formatDate, gateReason, get, mm, pct, probColor, regimeColor, warningLevel, type District } from '../lib';
 import { useResolvedTheme } from '../store';
-import { Bar, ErrorState, GateChip, LoadingBlock, ease } from './ui';
+import { Bar, ErrorState, GateChip, LevelChip, LoadingBlock, ease } from './ui';
 
 const driverLabels: Record<string, string> = { moisture: 'Moisture index', wind: 'Wind index', mslp: 'Pressure anomaly', terrain_m: 'Terrain (m)', coast_km: 'Distance to coast (km)' };
 
@@ -19,7 +19,8 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
     <div className="drawer-body">
       <div className="drawer-hero">
         <span className="label">Served rainfall</span>
-        <div className="drawer-value"><strong className="num">{item.served_mm.toFixed(1)}</strong><span>mm / day</span><GateChip status={item.gate_status} /></div>
+        <div className="drawer-value"><strong className="num">{item.served_mm.toFixed(1)}</strong><span>mm / day</span></div>
+        <div className="drawer-chips"><LevelChip level={warningLevel(item)} withAction /><GateChip status={item.gate_status} /></div>
         <p className="muted">{gateReason(item.gate_reason)}</p>
       </div>
 
@@ -63,7 +64,7 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
         <h3>Heavy-rain chance</h3>
         <div className="risk-grid">
           {([['Heavy', '≥ 64.5 mm', item.prob_64_5], ['Very heavy', '≥ 115.6 mm', item.prob_115_6], ['Extreme', '≥ 204.5 mm', item.prob_204_5]] as const).map(([label, cut, p]) => (
-            <div key={cut}><span>{label}</span><strong className="num">{pct(p)}</strong><small>{cut}</small></div>
+            <div key={cut} className="risk-tile" style={{ ['--risk' as string]: probColor(p, theme) }}><span>{label}</span><strong className="num">{pct(p)}</strong><small>{cut}</small></div>
           ))}
         </div>
         <div className="note"><Info size={16} aria-hidden /><p>{item.advisory}</p></div>
@@ -87,6 +88,15 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
       </div>
     </div>
   );
+}
+
+/** Copies the current URL (which carries ?district=) so a district forecast can be shared. */
+function CopyLink() {
+  const [done, setDone] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(window.location.href); setDone(true); setTimeout(() => setDone(false), 1600); } catch { /* clipboard blocked: nothing to do */ }
+  };
+  return <button className="icon-btn" onClick={copy} aria-label={done ? 'Link copied' : 'Copy link to this district'} title={done ? 'Link copied' : 'Copy link'}>{done ? <Check size={17} /> : <Link2 size={17} />}</button>;
 }
 
 export function DistrictDrawer({ id, name, state, date, lead, live, onClose }: { id: string | null; name?: string; state?: string; date: string; lead: number; live?: District; onClose: () => void }) {
@@ -145,7 +155,10 @@ export function DistrictDrawer({ id, name, state, date, lead, live, onClose }: {
                 <h2 id="drawer-title">{name ?? 'District'}</h2>
                 <p>{state}{state ? ' · ' : ''}{date && `${formatDate(date)} · `}Day +{lead}</p>
               </div>
-              <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Close district details"><X size={18} /></button>
+              <div className="drawer-actions">
+                <CopyLink />
+                <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Close district details"><X size={18} /></button>
+              </div>
             </div>
             <Content id={id} date={date} lead={lead} live={live} />
           </m.aside>

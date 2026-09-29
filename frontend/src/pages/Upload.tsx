@@ -50,7 +50,7 @@ export default function UploadPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Upload forecast" description="Run your own forecast rows through the trained models and see the corrected rainfall and gate decision for each." />
+      <PageHeader eyebrow="Try the model" title={<>Run your own <em>forecast rows.</em></>} description="Upload a CSV of raw forecasts and predictors; each row comes back with its regime, corrected range, served value, heavy-rain chance and gate decision." />
 
       <div className="upload-layout">
         <div className="card pad">

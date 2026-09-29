@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { m, useReducedMotion } from 'motion/react';
 import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
+import type { Level } from '../lib';
 
 export const ease = [0.22, 1, 0.36, 1] as const;
 
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+export function PageHeader({ title, eyebrow, description, actions }: { title: ReactNode; eyebrow?: string; description?: string; actions?: ReactNode }) {
   return (
     <header className="page-header">
       <div>
+        {eyebrow && <span className="label">{eyebrow}</span>}
         <h1>{title}</h1>
         {description && <p>{description}</p>}
       </div>
@@ -78,6 +80,11 @@ export function Segmented<T extends string | number>({ id, value, options, onCha
       })}
     </div>
   );
+}
+
+/** IMD-scheme level with its colour, name and (for screen readers and colour-blind readers) the action. */
+export function LevelChip({ level, withAction = false }: { level: Level; withAction?: boolean }) {
+  return <span className={`level-chip level-${level.key}`} title={level.action}><i style={{ background: level.color }} aria-hidden />{level.name}{withAction ? ` · ${level.action}` : <span className="sr-only"> · {level.action}</span>}</span>;
 }
 
 export function GateChip({ status }: { status: string }) {

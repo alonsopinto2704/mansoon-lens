@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { escapeHtml, get, rainBand, rainColor } from './lib';
+import { escapeHtml, get, levelFill, LEVELS, rainBand, rainColor, warningLevel } from './lib';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,5 +29,23 @@ describe('rainfall map colors', () => {
 
   it('uses a distinct ramp for dark surfaces', () => {
     expect(rainColor(115.6, 'dark')).not.toBe(rainColor(115.6, 'light'));
+  });
+});
+
+describe('IMD-scheme warning level', () => {
+  const at = (p64: number, p115 = 0, p204 = 0) => warningLevel({ prob_64_5: p64, prob_115_6: p115, prob_204_5: p204 }).key;
+  it('maps exceedance chances to green, yellow, orange and red at the documented cut-offs', () => {
+    expect(at(0.29)).toBe('green');
+    expect(at(0.3)).toBe('yellow');
+    expect(at(0.59, 0.29)).toBe('yellow');
+    expect(at(0.6)).toBe('orange');
+    expect(at(0.1, 0.3)).toBe('orange');
+    expect(at(0.9, 0.49, 0.29)).toBe('orange');
+    expect(at(0.9, 0.5)).toBe('red');
+    expect(at(0, 0, 0.3)).toBe('red');
+  });
+  it('lets only "no warning" recede on the map', () => {
+    expect(levelFill(LEVELS[0])).not.toBe(LEVELS[0].color);
+    expect(levelFill(LEVELS[3])).toBe(LEVELS[3].color);
   });
 });

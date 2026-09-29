@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { AnimatePresence, m } from 'motion/react';
 import { Menu, Monitor, Moon, Sun, X } from 'lucide-react';
-import { useMeta } from './data';
+import { useLive, useMeta } from './data';
 import { useForecastStore, useResolvedTheme } from './store';
 import { LoadingBlock, ease } from './components/ui';
 
@@ -26,12 +26,29 @@ const nav = [
 
 function Logo() {
   return (
-    <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden>
-      <rect width="32" height="32" rx="9" fill="var(--accent)" />
-      <circle cx="16" cy="14" r="7" fill="none" stroke="#fff" strokeWidth="2" />
-      <circle cx="16" cy="14" r="2.5" fill="#fff" />
-      <path d="M11 24.5l1-2M16 26l1-2M21 24.5l1-2" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden className="logo">
+      <rect width="32" height="32" rx="10" fill="var(--text)" />
+      <path d="M9.5 16.5a6.5 6.5 0 1 1 13 0" fill="none" stroke="var(--bg)" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="16" cy="16.5" r="2.6" fill="#5598e7" />
+      <path d="M11 22.5l-1 2.5M16 23l-1 2.5M21 22.5l-1 2.5" stroke="#5598e7" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function Wordmark() {
+  return <span className="wordmark">Monsoon<em>Lens</em></span>;
+}
+
+/** Header pill: shows the live NWP run time once it has loaded; links to the map. */
+function LiveStatus() {
+  const live = useLive(true);
+  const d = live.data;
+  if (!d?.fetched_at || !d.items.length) return null;
+  const at = new Date(d.fetched_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <Link to="/forecast" className="live-status" title="Latest live NWP run">
+      <span className="live-dot" aria-hidden /> Live <span className="live-status-time">· run {at}</span>
+    </Link>
   );
 }
 
@@ -91,9 +108,10 @@ export default function App() {
       <a href="#main" className="skip-link">Skip to content</a>
       <header className="topbar">
         <div className="topbar-inner">
-          <Link to="/" className="brand" aria-label="MonsoonLens home"><Logo /><span>MonsoonLens</span></Link>
+          <Link to="/" className="brand" aria-label="MonsoonLens home"><Logo /><Wordmark /></Link>
           <nav className="nav" aria-label="Main"><NavLinks /></nav>
           <div className="topbar-actions">
+            <LiveStatus />
             <ThemeToggle />
             <button className="icon-btn menu-btn" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-controls="mobile-nav" aria-label={menuOpen ? 'Close menu' : 'Open menu'}>
               {menuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -132,12 +150,17 @@ export default function App() {
       <footer className="footer">
         <div className="footer-inner">
           <div className="footer-brand">
-            <Link to="/" className="brand"><Logo /><span>MonsoonLens</span></Link>
-            <p>Regime-aware post-processing for district rainfall forecasts. Live raw rainfall comes from Open-Meteo’s global NWP; the correction is trained and verified on a sample dataset. Not an official forecast — refer to IMD for warnings.</p>
+            <Link to="/" className="brand"><Logo /><Wordmark /></Link>
+            <p>Regime-aware post-processing for district rainfall forecasts. Not an official forecast — for warnings, follow the India Meteorological Department.</p>
           </div>
           <nav className="footer-nav" aria-label="Footer">
             {nav.slice(1).map(({ to, label }) => <Link key={to} to={to}>{label}</Link>)}
           </nav>
+        </div>
+        <div className="footer-credits">
+          <span>Live raw rainfall: Open-Meteo global NWP (CC BY 4.0)</span>
+          <span>District boundaries: datta07/INDIAN-SHAPEFILES (MIT)</span>
+          <span>Correction trained and verified on a sample dataset</span>
         </div>
       </footer>
     </div>

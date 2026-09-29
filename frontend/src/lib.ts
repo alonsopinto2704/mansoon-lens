@@ -54,18 +54,19 @@ export const rainBands = [
 ] as const;
 export function rainBand(value: number) { return rainBands.findIndex((b) => value < b.max); }
 
-// Sequential single-hue ramps (light → dark on light surfaces, dark → light on dark surfaces).
+// Sequential single-hue blue (reference ramp steps): near-zero recedes toward the surface, heavy rain
+// (≥ 64.5 mm, step 400 and darker) stands out. Dark mode runs dark → light against the dark surface.
 const rainRamp: Record<Theme, string[]> = {
-  light: ['#eef4fb', '#cfe0f5', '#a3c5ec', '#6fa3df', '#3f7fcf', '#2459a8', '#173a74'],
-  dark: ['#1d2c44', '#22406b', '#2d5b97', '#437bc4', '#6c9fe0', '#a3c4f0', '#dde9fb'],
+  light: ['#edf3fa', '#cde2fb', '#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'],
+  dark: ['#162538', '#1c3f6b', '#1f5596', '#3179cf', '#5598e7', '#9ec5f4', '#dce9fb'],
 };
 export function rainColor(value: number, theme: Theme = 'light') { return rainRamp[theme][rainBand(value)]; }
 export const rainLegend = (theme: Theme) => rainRamp[theme];
 
-// Diverging: drier (orange) ← neutral → wetter (blue).
+// Diverging blue ↔ red with a neutral grey midpoint: drier (red) ← no change → wetter (blue).
 const diffRamp: Record<Theme, string[]> = {
-  light: ['#b9531f', '#eab08a', '#d7dbe0', '#8fb5e6', '#2a68c0'],
-  dark: ['#d9692f', '#8a5234', '#3a4353', '#335c93', '#6ea3ec'],
+  light: ['#b83a37', '#eba59c', '#e9e6df', '#9ec5f4', '#256abf'],
+  dark: ['#e66767', '#7c3a36', '#383835', '#2d5f9f', '#86b6ef'],
 };
 export function diffColor(value: number, theme: Theme = 'light') {
   const i = value <= -15 ? 0 : value < -3 ? 1 : value <= 3 ? 2 : value < 15 ? 3 : 4;
@@ -101,9 +102,36 @@ export const modelColors: Record<Theme, Record<string, string>> = {
 // Sequential warm ramp for heavy-rain chance (5 bins).
 export const probBins = [0.1, 0.3, 0.5, 0.7, Infinity];
 export const probLabels = ['< 10%', '10–30%', '30–50%', '50–70%', '≥ 70%'];
+// Second sequential context → its own single-hue ramp (orange), light → dark.
 const probRamp: Record<Theme, string[]> = {
-  light: ['#f6efe6', '#f5cf9f', '#ee9a55', '#d4582a', '#8f2a14'],
-  dark: ['#2a2420', '#6b4424', '#b1622c', '#e3854a', '#f7c59a'],
+  light: ['#f6ede4', '#f7caa6', '#ef9a63', '#dc6a2e', '#a3421b'],
+  dark: ['#2c2119', '#693a20', '#a8552a', '#e07a45', '#f6b489'],
 };
 export function probColor(p: number, theme: Theme = 'light') { return probRamp[theme][probBins.findIndex((b) => p < b)]; }
 export const probLegend = (theme: Theme) => probRamp[theme];
+
+/**
+ * Colour-coded risk in the IMD warning scheme, derived from MonsoonLens exceedance probabilities.
+ * Not an official IMD warning. Rule (documented on the How it works page):
+ *   Red    — P(≥115.6 mm) ≥ 50% or P(≥204.5 mm) ≥ 30%
+ *   Orange — P(≥64.5 mm) ≥ 60% or P(≥115.6 mm) ≥ 30%
+ *   Yellow — P(≥64.5 mm) ≥ 30%
+ *   Green  — otherwise
+ */
+export const LEVELS = [
+  { key: 'green', name: 'Green', label: 'No warning', action: 'No action needed', color: '#0ca30c' },
+  { key: 'yellow', name: 'Yellow', label: 'Watch', action: 'Be aware', color: '#fab219' },
+  { key: 'orange', name: 'Orange', label: 'Alert', action: 'Be prepared', color: '#ec835a' },
+  { key: 'red', name: 'Red', label: 'Warning', action: 'Take action', color: '#d03b3b' },
+] as const;
+export type Level = (typeof LEVELS)[number];
+/** Map fill: "no warning" recedes to a soft tint so the alert colours carry the map. */
+export function levelFill(level: Level, theme: Theme = 'light') {
+  return level.key === 'green' ? (theme === 'dark' ? '#1f3a2a' : '#d9ecdc') : level.color;
+}
+export function warningLevel(i: { prob_64_5: number; prob_115_6: number; prob_204_5: number }): Level {
+  if (i.prob_115_6 >= 0.5 || i.prob_204_5 >= 0.3) return LEVELS[3];
+  if (i.prob_64_5 >= 0.6 || i.prob_115_6 >= 0.3) return LEVELS[2];
+  if (i.prob_64_5 >= 0.3) return LEVELS[1];
+  return LEVELS[0];
+}

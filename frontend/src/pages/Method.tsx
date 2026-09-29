@@ -18,6 +18,7 @@ const details = [
   { title: 'Time-based evaluation', text: 'Models train on 2021–2023, calibrate on 2024 and are scored on 2025, a season they never see. Bootstrap intervals resample whole weeks to respect how weather persists from day to day.' },
   { title: 'Soft blend, strict gate', text: 'Blending by probability avoids sudden jumps when the regime is uncertain. The gate is deliberately conservative: a correction that only helps on average, or only against one baseline, is not served.' },
   { title: 'Rainfall thresholds', text: '64.5, 115.6 and 204.5 mm in 24 hours mark heavy, very heavy and extremely heavy rain, following India Meteorological Department terminology.' },
+  { title: 'Colour code', text: 'Heavy-rain chances are summarised in IMD’s green–yellow–orange–red scheme: red at ≥ 50% chance of 115.6 mm or ≥ 30% of 204.5 mm; orange at ≥ 60% of 64.5 mm or ≥ 30% of 115.6 mm; yellow at ≥ 30% of 64.5 mm. It is derived, not an official IMD warning.' },
 ];
 
 const limits = [
@@ -40,7 +41,7 @@ export default function MethodPage() {
   const Icon = step.icon;
   return (
     <div className="page">
-      <PageHeader title="How it works" description="Every district number traces back through seven steps. Select a step to see what happens there." />
+      <PageHeader eyebrow="Method" title={<>From raw model rain <em>to a district forecast.</em></>} description="Every number on this site traces back through seven steps. Select a step to see what happens there." />
 
       <div className="pipeline">
         <ol className="pipeline-steps">
@@ -80,7 +81,7 @@ export default function MethodPage() {
       </div>
 
       <Section title="Design choices">
-        <div className="grid-3">
+        <div className="grid-3 grid-4">
           {details.map((d, i) => <Reveal key={d.title} delay={i * 0.06} className="card pad"><h3>{d.title}</h3><p className="muted">{d.text}</p></Reveal>)}
         </div>
       </Section>

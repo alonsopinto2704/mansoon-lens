@@ -1,164 +1,181 @@
-import { Link } from 'react-router-dom';
+import { useMemo, useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { m } from 'motion/react';
-import { ArrowRight, BellRing, CloudRain, Layers, MapPinned, ShieldCheck, SlidersHorizontal } from 'lucide-react';
-import { useMeta, useVerification } from '../data';
-import { modelColors, regimeColor } from '../lib';
-import { useResolvedTheme } from '../store';
-import { Bar, CountUp, ErrorState, GateChip, Reveal, Skeleton, ease } from '../components/ui';
+import { ArrowRight, MapPinned, Search } from 'lucide-react';
+import { useLive, useVerification } from '../data';
+import { escapeHtml, levelFill, LEVELS, mm, pct, warningLevel, type Forecast } from '../lib';
+import { useForecastStore, useResolvedTheme } from '../store';
+import { IndiaMap } from '../components/IndiaMap';
+import { ErrorState, GateChip, Reveal, Skeleton, ease } from '../components/ui';
 
-const MODELS = ['Raw', 'Global', 'Regime-aware'] as const;
-
-const features = [
-  { icon: Layers, title: 'Regime detection', text: 'Every district-day gets calibrated probabilities across six monsoon regimes — from active spells to breaks and depressions.', to: '/regimes' },
-  { icon: SlidersHorizontal, title: 'Bias correction', text: 'Regime-specific models are blended by those probabilities into a low, best-estimate and high rainfall value.', to: '/method' },
-  { icon: BellRing, title: 'Heavy-rain chances', text: 'Calibrated probabilities of crossing the IMD heavy, very heavy and extremely heavy thresholds.', to: '/alerts' },
-  { icon: ShieldCheck, title: 'Verified before served', text: 'A correction only goes live for a regime when held-out tests show it beats both the raw and a one-size-fits-all fix.', to: '/verification' },
+const steps = [
+  { title: 'Read the pattern', text: 'A calibrated classifier gives every district-day a probability for each of six monsoon regimes.', to: '/regimes' },
+  { title: 'Correct for it', text: 'Regime-specific models, blended by those probabilities, turn raw NWP rainfall into a low, best and high estimate.', to: '/method' },
+  { title: 'Price the risk', text: 'Calibrated chances of crossing IMD’s 64.5, 115.6 and 204.5 mm thresholds, shown in the familiar colour code.', to: '/alerts' },
+  { title: 'Prove it first', text: 'A regime’s correction is served only after it beats raw and a single global fix on a season it never saw.', to: '/verification' },
 ];
 
-function Preview() {
+const dayName = (iso?: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' }) : '');
+
+/** Live map of today's colour-coded risk, with the numbers a duty officer would ask for first. */
+function LiveHero() {
+  const live = useLive(true);
   const theme = useResolvedTheme();
-  const verification = useVerification();
-  const v = verification.data;
-  const passed = v ? v.regimes.filter((r) => v.gate[r]?.status === 'Corrected') : [];
-  const shown = passed.length ? passed : ['Overall'];
-  const rmse = (group: string, model: string) => v?.scores[group]?.[model]?.['64.5']?.rmse ?? 0;
-  const label = { Raw: 'Raw model', Global: 'Global fix', 'Regime-aware': 'MonsoonLens' };
+  const setSource = useForecastStore((s) => s.setSource);
+  const items: Forecast[] = useMemo(() => live.data?.items ?? [], [live.data]);
+  const counts = LEVELS.map((l) => items.filter((i) => warningLevel(i).key === l.key).length);
+  const wettest = items.reduce<Forecast | null>((w, i) => (!w || i.served_mm > w.served_mm ? i : w), null);
+  const tooltip = (i: Forecast) => `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Served</span><b>${mm(i.served_mm)}</b><span>Heavy-rain chance</span><b>${pct(i.prob_64_5)}</b><span>Level</span><b>${warningLevel(i).name}</b></div>`;
+  const at = live.data?.fetched_at ? new Date(live.data.fetched_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
 
   return (
-    <m.div className="preview card" initial={{ opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.7, ease, delay: 0.15 }}>
-      <div className="preview-head">
-        <span className="label">Error where correction is live</span>
-        <span className="muted small">RMSE · lower is better</span>
-      </div>
-      {verification.isError ? <div><ErrorState error={verification.error} /><button className="btn btn-secondary mt" onClick={() => verification.refetch()}>Try again</button></div> : !v ? <div className="loading-block"><Skeleton height={40} /><Skeleton height={40} /><Skeleton height={40} /></div> : (
-        <div className="compare-groups">
-          {shown.map((group) => {
-            const max = Math.max(...MODELS.map((x) => rmse(group, x)), 1);
-            return (
-              <div key={group}>
-                <span className="compare-group">{group === 'Overall' ? 'All regimes' : `${group} regime`}</span>
-                <ul className="compare">
-                  {MODELS.map((x) => (
-                    <li key={x} className={x === 'Regime-aware' ? 'is-ours' : ''}>
-                      <span className="compare-name">{label[x]}</span>
-                      <Bar value={rmse(group, x)} max={max} color={modelColors[theme][x]} />
-                      <b className="num">{rmse(group, x).toFixed(1)}</b>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="preview-foot">
+    <m.div className="hero-map card" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease, delay: 0.1 }}>
+      <div className="hero-map-head">
         <div>
-          <span className="label">Corrections live</span>
-          <strong className="num">{v ? `${passed.length} of ${v.regimes.length}` : '—'}</strong>
-          <span className="muted small">regimes passed the gate</span>
+          <span className="label">{items.length ? <><span className="live-dot" aria-hidden /> Live · run {at}</> : 'Live NWP'}</span>
+          <strong>{live.data?.date ? dayName(live.data.date) : 'Today’s forecast'}</strong>
         </div>
-        <div className="regime-dots" aria-label="Regime gate status">
-          {v?.regimes.map((r) => (
-            <span key={r} className="regime-dot" data-pass={v.gate[r]?.status === 'Corrected'} title={`${r}: ${v.gate[r]?.status}`}>
-              <i style={{ background: regimeColor(r, theme) }} />{r}
-            </span>
+        <Link to="/forecast" className="link" onClick={() => setSource('live')}>Open map <ArrowRight size={14} aria-hidden /></Link>
+      </div>
+      <div className="hero-map-body">
+        {live.isError && !items.length ? <div className="pad"><ErrorState error={live.error} /></div>
+          : !items.length ? <Skeleton height="100%" className="map-skeleton" />
+          : <IndiaMap items={items} color={(i) => levelFill(warningLevel(i), theme)} tooltip={tooltip} />}
+      </div>
+      <div className="hero-map-foot">
+        <ul className="level-counts" aria-label="Districts by warning level">
+          {[...LEVELS].reverse().map((l) => (
+            <li key={l.key}><i style={{ background: levelFill(l, theme) }} /><b className="num">{items.length ? counts[LEVELS.indexOf(l)] : '—'}</b> {l.name.toLowerCase()}</li>
           ))}
-        </div>
+        </ul>
+        {wettest && <span className="muted small">Wettest: <b className="ink">{wettest.district}</b> {mm(wettest.served_mm)}</span>}
       </div>
     </m.div>
   );
 }
 
-export default function Overview() {
-  const meta = useMeta();
+function Evidence() {
   const verification = useVerification();
   const v = verification.data;
-  const stats = [
-    { value: meta.data?.district_count, label: 'Districts covered' },
-    { value: 6, label: 'Monsoon regimes' },
-    { value: 5, label: 'Days of lead time' },
-    { value: v?.test_rows, label: 'Held-out forecasts scored' },
-  ];
+  if (verification.isError) return <ErrorState error={verification.error} />;
+  const at = (model: string) => v?.scores.Overall?.[model]?.['64.5'];
+  const raw = at('Raw'), ours = at('Regime-aware'), global = at('Global');
+  const passed = v ? v.regimes.filter((r) => v.gate[r]?.status === 'Corrected') : [];
+  const figures = raw && ours && global ? [
+    { label: 'Rainfall error', value: `${ours.rmse.toFixed(1)} mm`, delta: `${pct((raw.rmse - ours.rmse) / raw.rmse)} lower`, note: `RMSE · raw ${raw.rmse.toFixed(1)}, global fix ${global.rmse.toFixed(1)}` },
+    { label: 'Heavy-rain hit score', value: (ours.csi ?? 0).toFixed(2), delta: `+${pct(((ours.csi ?? 0) - (raw.csi ?? 0)) / (raw.csi || 1))}`, note: `CSI at ≥ 64.5 mm · raw ${(raw.csi ?? 0).toFixed(2)}` },
+    { label: 'Heavy rain caught', value: pct(ours.pod ?? 0), delta: `was ${pct(raw.pod ?? 0)}`, note: 'Probability of detection · ≥ 64.5 mm' },
+  ] : [];
 
+  return (
+    <section className="evidence">
+      <Reveal className="evidence-head">
+        <span className="label">Measured on a season the models never saw</span>
+        <h2 className="display section-display">Better where it matters — <em>and only where it’s proven.</em></h2>
+      </Reveal>
+      <div className="evidence-grid">
+        {!v ? Array.from({ length: 3 }, (_, i) => <div key={i} className="figure"><Skeleton height={90} /></div>) : figures.map((f, i) => (
+          <Reveal key={f.label} delay={i * 0.06} className="figure">
+            <span className="figure-label">{f.label}</span>
+            <strong className="figure-value num">{f.value}</strong>
+            <span className="figure-delta">{f.delta}</span>
+            <span className="figure-note">{f.note}</span>
+          </Reveal>
+        ))}
+        {v && (
+          <Reveal delay={0.18} className="figure figure-gate">
+            <span className="figure-label">Corrections live</span>
+            <strong className="figure-value num">{passed.length}<span> of {v.regimes.length}</span></strong>
+            <span className="figure-note">regimes passed the verification gate</span>
+            <ul className="gate-mini">
+              {v.regimes.map((r) => <li key={r}><span>{r}</span><GateChip status={v.gate[r].status} /></li>)}
+            </ul>
+          </Reveal>
+        )}
+      </div>
+      <Link to="/verification" className="link">Read the full verification <ArrowRight size={14} aria-hidden /></Link>
+    </section>
+  );
+}
+
+function DistrictJump() {
+  const live = useLive(true);
+  const navigate = useNavigate();
+  const setSource = useForecastStore((s) => s.setSource);
+  const [q, setQ] = useState('');
+  const names = useMemo(() => (live.data?.items ?? []).map((i) => ({ id: i.district_id, label: `${i.district}, ${i.state}` })), [live.data]);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const text = q.trim().toLowerCase();
+    const hit = names.find((n) => n.label.toLowerCase() === text) ?? names.find((n) => n.label.toLowerCase().startsWith(text)) ?? names.find((n) => n.label.toLowerCase().includes(text));
+    setSource('live');
+    navigate(hit ? `/forecast?district=${hit.id}` : '/forecast');
+  };
+  return (
+    <Reveal as="section" className="jump">
+      <div>
+        <h2 className="display section-display">What’s coming for <em>your district?</em></h2>
+        <p>Five days of corrected rainfall, heavy-rain chances and the weather regime behind them.</p>
+      </div>
+      <form className="jump-form" onSubmit={submit} role="search">
+        <label className="input input-icon jump-input">
+          <Search size={17} aria-hidden />
+          <input list="district-names" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type a district, e.g. Pune" aria-label="District name" />
+        </label>
+        <datalist id="district-names">{names.map((n) => <option key={n.id} value={n.label} />)}</datalist>
+        <button className="btn btn-light" type="submit">Show forecast <ArrowRight size={16} aria-hidden /></button>
+      </form>
+    </Reveal>
+  );
+}
+
+export default function Overview() {
   return (
     <div className="page overview">
       <section className="hero">
         <div className="hero-copy">
-          <m.span className="pill" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
-            <CloudRain size={14} aria-hidden /> Regime-aware rainfall post-processing
+          <m.span className="label" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
+            Regime-aware rainfall post-processing · India
           </m.span>
           <m.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.05 }}>
-            Every weather pattern.<br /><span className="accent-text">A clearer rainfall forecast.</span>
+            A clearer rainfall forecast for <em>every monsoon pattern.</em>
           </m.h1>
           <m.p className="lead" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.12 }}>
-            MonsoonLens reads the weather pattern behind each forecast, corrects model rainfall for that pattern, and only publishes the correction where the evidence says it helps.
+            MonsoonLens reads the weather regime behind each district forecast, corrects the model’s rainfall for it, and publishes a correction only where held-out evidence says it helps.
           </m.p>
           <m.div className="hero-actions" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.2 }}>
-            <Link className="btn btn-primary" to="/forecast"><MapPinned size={16} aria-hidden /> Open the forecast map</Link>
-            <Link className="btn btn-ghost" to="/method">How it works <ArrowRight size={16} aria-hidden /></Link>
+            <Link className="btn btn-primary btn-lg" to="/forecast"><MapPinned size={17} aria-hidden /> Open the forecast map</Link>
+            <Link className="btn btn-ghost btn-lg" to="/method">How it works <ArrowRight size={16} aria-hidden /></Link>
           </m.div>
-          <p className="hero-disclosure"><ShieldCheck size={15} aria-hidden /> Research demo · Verified on synthetic data</p>
         </div>
-        <Preview />
+        <LiveHero />
       </section>
 
-      <section className="stats" aria-label="Key figures">
-        {stats.map((s, i) => (
-          <Reveal key={s.label} delay={i * 0.06} className="stat">
-            <strong>{typeof s.value === 'number' ? <CountUp value={s.value} /> : (i === 0 ? meta.isError : verification.isError) ? <span aria-label="Unavailable">—</span> : <Skeleton height={32} width={80} />}</strong>
-            <span>{s.label}</span>
-          </Reveal>
-        ))}
-      </section>
+      <Evidence />
 
       <section className="section">
-        <Reveal className="section-head section-head-center">
+        <Reveal className="section-head">
           <div>
-            <h2>Understand the pattern. See the difference.</h2>
-            <p>Four steps, each one visible and measurable.</p>
+            <span className="label">How it works</span>
+            <h2 className="display section-display">Four steps, <em>each one checked.</em></h2>
           </div>
+          <Link to="/method" className="link">The full method <ArrowRight size={14} aria-hidden /></Link>
         </Reveal>
-        <div className="feature-grid">
-          {features.map(({ icon: Icon, title, text, to }, i) => (
-            <Reveal key={title} delay={i * 0.07}>
-              <Link to={to} className="feature card card-hover">
-                <div className="feature-top"><span className="feature-icon"><Icon size={20} aria-hidden /></span><span className="feature-number">0{i + 1}</span></div>
-                <h3>{title}</h3>
-                <p>{text}</p>
-                <span className="feature-link">Learn more <ArrowRight size={14} aria-hidden /></span>
+        <ol className="rail">
+          {steps.map((s, i) => (
+            <Reveal as="li" key={s.title} delay={i * 0.07} className="rail-step">
+              <Link to={s.to}>
+                <span className="rail-num">0{i + 1}</span>
+                <h3>{s.title}</h3>
+                <p>{s.text}</p>
+                <span className="feature-link">Explore <ArrowRight size={14} aria-hidden /></span>
               </Link>
             </Reveal>
           ))}
-        </div>
+        </ol>
       </section>
 
-      {v && (
-        <section className="section">
-          <Reveal className="section-head">
-            <div>
-              <h2>Where correction is live</h2>
-              <p>Each regime has to earn its correction on the held-out season.</p>
-            </div>
-            <Link to="/verification" className="link">See the evidence <ArrowRight size={14} aria-hidden /></Link>
-          </Reveal>
-          <Reveal className="gate-strip card">
-            {v.regimes.map((r) => (
-              <div key={r} className="gate-item">
-                <span className="gate-name">{r}</span>
-                <GateChip status={v.gate[r].status} />
-              </div>
-            ))}
-          </Reveal>
-        </section>
-      )}
-
-      <Reveal as="section" className="cta card">
-        <div>
-          <h2>Explore today’s district forecast</h2>
-          <p>Today’s live NWP run for all 781 districts, days +1 to +5: compare raw and corrected rainfall, and open any district for its range, regime and heavy-rain chances.</p>
-        </div>
-        <Link className="btn btn-primary" to="/forecast">Open the map <ArrowRight size={16} aria-hidden /></Link>
-      </Reveal>
+      <DistrictJump />
     </div>
   );
 }

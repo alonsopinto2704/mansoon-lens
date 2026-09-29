@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Bar as RBar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Download } from 'lucide-react';
 import { useVerification } from '../data';
 import { fixed, gateReason, mm, modelColors, pct, type Score } from '../lib';
 import { useResolvedTheme } from '../store';
 import { ChartCard, ChartTooltip, LegendRow, chartTheme } from '../components/charts';
+import { PerformanceDiagram } from '../components/PerformanceDiagram';
 import { Field, Toolbar } from '../components/Controls';
 import { CountUp, ErrorState, GateChip, LoadingBlock, PageHeader, Reveal, Section, Segmented } from '../components/ui';
 
@@ -42,13 +43,19 @@ export default function VerificationPage() {
   const at = (m: string) => scores[m][threshold] as Score;
   const ours = at('Regime-aware');
   const raw = at('Raw');
-  const skill = ['csi', 'pod', 'ets'].map((k) => ({ name: k.toUpperCase(), ...Object.fromEntries(MODELS.map((m) => [modelLabel[m], at(m)[k as 'csi'] ?? 0])) }));
+  const perf = MODELS.map((m) => ({ key: m, label: modelLabel[m], color: colors[m], points: v.thresholds.map((t) => ({ threshold: String(t), score: scores[m][String(t)] as Score })) }));
+  const byLead = [1, 2, 3, 4, 5].map((n) => ({ lead: `Day +${n}`, ...Object.fromEntries(MODELS.flatMap((m) => {
+    const sc = v.scores[`Lead ${n}`]?.[m]?.[threshold] as Score | undefined;
+    return [[`${modelLabel[m]}|rmse`, sc?.rmse ?? null], [`${modelLabel[m]}|csi`, sc?.csi ?? null]];
+  })) }));
+  const legend = <LegendRow items={MODELS.map((m) => ({ label: modelLabel[m], color: colors[m] }))} />;
   const groups = ['Overall', ...v.regimes, ...[1, 2, 3, 4, 5].map((n) => `Lead ${n}`)];
   const rmseGain = raw.rmse ? (raw.rmse - ours.rmse) / raw.rmse : 0;
 
   return (
     <div className="page">
-      <PageHeader title="Verification" description="How the raw model, a single global correction and MonsoonLens compare on a season the models never saw."
+      <PageHeader eyebrow="Verification · held-out 2025 season" title={<>How much better, <em>and where.</em></>}
+        description="The raw model, a single global correction and MonsoonLens, scored on a season the models never saw — with the scores judges of rainfall forecasts use: RMSE, POD, FAR, CSI, ETS, Brier and FSS."
         actions={<>
           <a className="btn btn-secondary" href="/api/v1/verification/report.csv"><Download size={16} aria-hidden /> CSV</a>
           <a className="btn btn-secondary" href="/api/v1/verification/report.pdf"><Download size={16} aria-hidden /> PDF report</a>
@@ -76,16 +83,8 @@ export default function VerificationPage() {
       </div>
 
       <div className="grid-2">
-        <ChartCard title="Event skill" description={`Higher is better · ≥ ${threshold} mm`} legend={<LegendRow items={MODELS.map((m) => ({ label: modelLabel[m], color: colors[m] }))} />}>
-          <ResponsiveContainer width="100%" height="100%" minHeight={280}>
-            <BarChart data={skill} barGap={2} barCategoryGap="26%">
-              <CartesianGrid vertical={false} stroke={ct.grid} />
-              <XAxis dataKey="name" tick={ct.tick} axisLine={{ stroke: ct.grid }} tickLine={false} />
-              <YAxis domain={[0, 1]} tick={ct.tick} axisLine={false} tickLine={false} width={36} />
-              <Tooltip cursor={{ fill: ct.cursor }} content={<ChartTooltip />} />
-              {MODELS.map((m) => <RBar key={m} dataKey={modelLabel[m]} fill={colors[m]} radius={[4, 4, 0, 0]} maxBarSize={30} />)}
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartCard title="Performance diagram" description={`${group} · all three IMD thresholds · larger points: ≥ ${threshold} mm`} legend={legend}>
+          <PerformanceDiagram series={perf} active={threshold} grid={ct.grid} axis={ct.axis} text={ct.tick.fill} />
         </ChartCard>
 
         <div className="card table-card">
@@ -107,6 +106,26 @@ export default function VerificationPage() {
       </div>
 
       <div className="grid-2">
+        {(['rmse', 'csi'] as const).map((metric) => (
+          <ChartCard key={metric} title={metric === 'rmse' ? 'Rainfall error by lead day' : `Heavy-rain skill by lead day`}
+            description={metric === 'rmse' ? 'RMSE (mm) · lower is better · all district-days' : `CSI at ≥ ${threshold} mm · higher is better`} legend={legend}>
+            <ResponsiveContainer width="100%" height="100%" minHeight={260}>
+              <LineChart data={byLead} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={ct.grid} />
+                <XAxis dataKey="lead" tick={ct.tick} axisLine={{ stroke: ct.grid }} tickLine={false} />
+                <YAxis tick={ct.tick} axisLine={false} tickLine={false} width={40} domain={metric === 'csi' ? [0, 'auto'] : ['auto', 'auto']} tickFormatter={(n: number) => (metric === 'csi' ? n.toFixed(2) : n.toFixed(0))} />
+                <Tooltip content={<ChartTooltip format={(n) => (metric === 'csi' ? n.toFixed(3) : `${n.toFixed(1)} mm`)} />} />
+                {MODELS.map((m) => (
+                  <Line key={m} name={modelLabel[m]} dataKey={`${modelLabel[m]}|${metric}`} stroke={colors[m]} strokeWidth={m === 'Regime-aware' ? 2.5 : 2}
+                    dot={{ r: 4, strokeWidth: 2, fill: 'var(--surface)' }} activeDot={{ r: 5 }} isAnimationActive={false} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        ))}
+      </div>
+
+      <div className="grid-2">
         <ChartCard title="Probability reliability" description={`Forecast chance vs. how often ≥ ${threshold} mm actually happened`}
           legend={<LegendRow items={[{ label: 'MonsoonLens', color: colors['Regime-aware'] }, { label: 'Perfect', color: ct.axis, dashed: true }]} />}>
           <ResponsiveContainer width="100%" height="100%" minHeight={280}>
@@ -116,7 +135,7 @@ export default function VerificationPage() {
               <YAxis domain={[0, 1]} tickFormatter={pct} tick={ct.tick} axisLine={false} tickLine={false} width={44} />
               <Tooltip content={<ChartTooltip format={pct} labelFormat={(l) => `Forecast ${pct(Number(l))}`} />} />
               <Line name="Perfect" dataKey="forecast" stroke={ct.axis} strokeDasharray="4 4" dot={false} strokeWidth={1.5} isAnimationActive={false} />
-              <Line name="Observed" type="monotone" dataKey="observed" stroke={colors['Regime-aware']} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--surface)' }} activeDot={{ r: 5 }} />
+              <Line name="Observed" type="monotone" dataKey="observed" stroke={colors['Regime-aware']} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--surface)' }} activeDot={{ r: 5 }} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>

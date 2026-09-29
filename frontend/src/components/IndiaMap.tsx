@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AttributionControl, GeoJSON, MapContainer, Pane, useMap } from 'react-leaflet';
+import { AttributionControl, GeoJSON, MapContainer, Pane, useMap, ZoomControl } from 'react-leaflet';
+import { Maximize2 } from 'lucide-react';
 import L, { type Layer, type LeafletMouseEvent, type Path } from 'leaflet';
 import { useQuery } from '@tanstack/react-query';
 import 'leaflet/dist/leaflet.css';
@@ -33,7 +34,12 @@ function FitIndia() {
     observer.observe(map.getContainer());
     return () => observer.disconnect();
   }, [map]);
-  return <button type="button" className="btn btn-secondary map-reset" onClick={(event) => { event.stopPropagation(); map.fitBounds(INDIA, { padding: [8, 8] }); }}>Reset view</button>;
+  return (
+    <button type="button" className="map-reset" title="Fit India" aria-label="Reset map view to all of India"
+      onClick={(event) => { event.stopPropagation(); map.fitBounds(INDIA, { padding: [8, 8] }); }}>
+      <Maximize2 size={15} aria-hidden />
+    </button>
+  );
 }
 
 /** District choropleth over official-outline district polygons. No tile server: works offline. */
@@ -50,7 +56,7 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
   const style = (id: string) => {
     const item = latest.current.byId.get(id);
     const isSel = latest.current.selected === id;
-    return { fillColor: item ? latest.current.color(item) : 'var(--map-empty)', fillOpacity: 1, color: isSel ? 'var(--text)' : 'var(--map-stroke)', weight: isSel ? 2.4 : 0.4 };
+    return { fillColor: item ? latest.current.color(item) : 'var(--map-empty)', fillOpacity: 1, color: isSel ? 'var(--accent)' : 'var(--map-stroke)', weight: isSel ? 3 : 0.45 };
   };
 
   useEffect(() => {
@@ -79,8 +85,9 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
 
   return (
     <MapContainer bounds={INDIA} maxBounds={[[0, 58], [42, 108]]} minZoom={4} maxZoom={10} zoomSnap={0.25} scrollWheelZoom={false}
-      attributionControl={false} className="leaflet-map" style={{ height }} renderer={L.svg({ padding: 0.5 })}>
+      attributionControl={false} zoomControl={false} className="leaflet-map" style={{ height }} renderer={L.svg({ padding: 0.5 })}>
       <FitIndia />
+      <ZoomControl position="bottomright" />
       <AttributionControl prefix={false} />
       <GeoJSON data={districts.data as never} style={(f) => style(f?.properties?.district_id)} onEachFeature={onEach as never}
         attribution={`Boundaries: <a href="https://github.com/datta07/INDIAN-SHAPEFILES">datta07</a> (MIT)${live ? ' · NWP: <a href="https://open-meteo.com">Open-Meteo</a> (CC BY 4.0)' : ''}`} key={live ? 'live' : 'season'} />

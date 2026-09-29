@@ -1,58 +1,122 @@
 import { useMemo, useState } from 'react';
-import { AnimatePresence, m } from 'motion/react';
-import { Bar as RBar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { m } from 'motion/react';
 import { useForecast, useVerification } from '../data';
-import { formatDate, gateReason, modelColors, pct, regimeBlurb, regimeColor } from '../lib';
+import { escapeHtml, fixed, gateReason, mm, pct, regimeBlurb, regimeColor, REGIMES, type Forecast } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
-import { ChartCard, ChartTooltip, LegendRow, chartTheme } from '../components/charts';
-import { ErrorState, GateChip, LoadingBlock, PageHeader, Reveal, Section, ease } from '../components/ui';
+import { IndiaMap } from '../components/IndiaMap';
+import { DayStrip, SourceControls } from '../components/Controls';
+import { ErrorState, GateChip, LoadingBlock, Reveal, Skeleton, ease } from '../components/ui';
+
+const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+
+/** Row-normalised confusion matrix: each row is a true regime, cells show where its days were classified. */
+function Confusion({ matrix, regimes }: { matrix: number[][]; regimes: string[] }) {
+  const theme = useResolvedTheme();
+  const cell = (share: number) => {
+    const a = Math.round(8 + share * 86); // blue at 8–94% strength over the surface
+    return theme === 'dark' ? `color-mix(in srgb, #5598e7 ${a}%, #111d2a)` : `color-mix(in srgb, #1c5cab ${a}%, #fffefb)`;
+  };
+  return (
+    <div className="confusion" role="table" aria-label="Regime classifier confusion matrix, held-out season">
+      <div role="row" className="cm-row cm-head">
+        <span role="columnheader" className="cm-corner">True ↓ · Predicted →</span>
+        {regimes.map((r) => <span role="columnheader" key={r}><i style={{ background: regimeColor(r, theme) }} />{r === 'Western disturbance' ? 'W. dist.' : r}</span>)}
+      </div>
+      {matrix.map((row, i) => {
+        const total = row.reduce((a, b) => a + b, 0) || 1;
+        return (
+          <div role="row" className="cm-row" key={regimes[i]}>
+            <span role="rowheader"><i style={{ background: regimeColor(regimes[i], theme) }} />{regimes[i]}</span>
+            {row.map((n, j) => {
+              const share = n / total;
+              return (
+                <span role="cell" key={j} className={`cm-cell${i === j ? ' is-diag' : ''}`} style={{ background: cell(share), color: share > 0.45 ? '#fff' : 'var(--text)' }}
+                  title={`${regimes[i]} days predicted as ${regimes[j]}: ${n.toLocaleString('en-IN')} (${pct(share)})`}>
+                  {pct(share)}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function RegimesPage() {
   const theme = useResolvedTheme();
-  const ct = chartTheme(theme);
   const verification = useVerification();
   const forecast = useForecast();
-  const [open, setOpen] = useState<string | null>(null);
+  const source = useForecastStore((s) => s.source);
+  const [focus, setFocus] = useState<string | null>(null);
   const v = verification.data;
-  const rows = forecast.data?.items;
+  const rows: Forecast[] = useMemo(() => forecast.data?.items ?? [], [forecast.data]);
   const date = forecast.data?.date;
-  const live = useForecastStore((s) => s.source) === 'live';
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
-    rows?.forEach((r) => { out[r.dominant_regime] = (out[r.dominant_regime] ?? 0) + 1; });
+    rows.forEach((r) => { out[r.dominant_regime] = (out[r.dominant_regime] ?? 0) + 1; });
     return out;
   }, [rows]);
-  const total = rows?.length ?? 0;
-  const series = [{ key: 'precision', label: 'Precision', color: modelColors[theme]['Regime-aware'] }, { key: 'recall', label: 'Recall', color: modelColors[theme].Global }];
+  const total = rows.length;
+  const muted = theme === 'dark' ? '#1a2839' : '#e7e3da';
+  const color = (i: Forecast) => (!focus || i.dominant_regime === focus ? regimeColor(i.dominant_regime, theme) : muted);
+  const tooltip = (i: Forecast) => `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Most likely regime</span><b>${escapeHtml(i.dominant_regime)}</b><span>Served</span><b>${mm(i.served_mm)}</b></div>`;
 
   return (
-    <div className="page">
-      <PageHeader title="Weather regimes" description="Six recurring monsoon patterns. Every district forecast carries a probability for each, and the correction blends all six." />
+    <div className="page page-wide">
+      <header className="ws-head">
+        <div>
+          <span className="label">Weather regimes · {source === 'live' ? 'live NWP' : 'held-out season'}</span>
+          <h1 className="ws-title">{date ? longDate(date) : 'Weather regimes'}</h1>
+        </div>
+        <SourceControls />
+      </header>
+      <DayStrip />
+
+      <div className="regime-layout">
+        <div className="card map-card regime-map">
+          {forecast.isError ? <div className="pad"><ErrorState error={forecast.error} /></div> : !total ? <Skeleton height="100%" className="map-skeleton" /> : (
+            <div className="map-wrap"><IndiaMap items={rows} color={color} tooltip={tooltip} /></div>
+          )}
+        </div>
+        <aside className="card regime-legend">
+          <span className="label">Most likely regime · {total || '—'} districts</span>
+          <p className="muted small">Select a regime to spotlight it on the map.</p>
+          <ul>
+            {REGIMES.map((r) => {
+              const n = counts[r] ?? 0;
+              const active = focus === r;
+              return (
+                <li key={r}>
+                  <button className={`regime-row${active ? ' is-active' : ''}`} aria-pressed={active} onClick={() => setFocus(active ? null : r)}>
+                    <span className="regime-row-top"><i style={{ background: regimeColor(r, theme) }} /><strong>{r}</strong><b className="num">{n}</b></span>
+                    <span className="share-track"><m.span className="share-fill" style={{ background: regimeColor(r, theme) }} initial={{ width: 0 }} animate={{ width: `${total ? (n / total) * 100 : 0}%` }} transition={{ duration: 0.6, ease }} /></span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {focus && <button className="btn btn-ghost" onClick={() => setFocus(null)}>Show all regimes</button>}
+        </aside>
+      </div>
 
       {verification.isError ? <ErrorState error={verification.error} /> : !v ? <LoadingBlock rows={6} /> : (
         <>
-          {total > 0 && (
-            <Reveal className="card mix-card">
-              <div className="mix-head"><span className="label">Most likely regime by district</span><span className="muted small">{live ? 'Live NWP' : 'Held-out season'} · {date && formatDate(date)} · {total} districts</span></div>
-              <div className="mix-bar" role="img" aria-label={v.regimes.map((r) => `${r} ${counts[r] ?? 0}`).join(', ')}>
-                {v.regimes.filter((r) => counts[r]).map((r) => (
-                  <m.span key={r} style={{ background: regimeColor(r, theme) }} initial={{ flexGrow: 0 }} animate={{ flexGrow: counts[r] }} transition={{ duration: 0.8, ease }} title={`${r}: ${counts[r]}`} />
-                ))}
-              </div>
-              <div className="mix-legend">
-                {v.regimes.map((r) => <span key={r}><i style={{ background: regimeColor(r, theme) }} />{r}<b className="num">{counts[r] ?? 0}</b></span>)}
+          <section className="section">
+            <Reveal className="section-head">
+              <div>
+                <span className="label">Why regimes matter</span>
+                <h2 className="display section-display">The raw model errs <em>differently in each.</em></h2>
               </div>
             </Reveal>
-          )}
-
-          <div className="regime-grid">
-            {v.regimes.map((name, i) => {
-              const metric = v.classifier.per_regime.find((r) => r.regime === name);
-              const gate = v.gate[name];
-              const isOpen = open === name;
-              return (
-                <Reveal key={name} delay={i * 0.05}>
-                  <button className={`regime-card card card-hover ${isOpen ? 'is-open' : ''}`} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : name)}>
+            <div className="regime-grid">
+              {v.regimes.map((name, i) => {
+                const metric = v.classifier.per_regime.find((r) => r.regime === name);
+                const gate = v.gate[name];
+                const raw = v.scores[name]?.Raw?.['64.5'];
+                const ours = v.scores[name]?.['Regime-aware']?.['64.5'];
+                return (
+                  <Reveal key={name} delay={i * 0.05} className="regime-card card">
                     <div className="regime-top">
                       <span className="regime-swatch" style={{ background: regimeColor(name, theme) }} />
                       <h3>{name}</h3>
@@ -60,38 +124,27 @@ export default function RegimesPage() {
                     </div>
                     <p className="muted">{regimeBlurb[name]}</p>
                     <dl className="regime-metrics">
-                      <div><dt>Districts today</dt><dd className="num">{counts[name] ?? 0}</dd></div>
-                      <div><dt>Precision</dt><dd className="num">{metric ? pct(metric.precision) : '—'}</dd></div>
-                      <div><dt>Recall</dt><dd className="num">{metric ? pct(metric.recall) : '—'}</dd></div>
+                      <div><dt>Raw model bias</dt><dd className="num">{raw ? `${raw.bias > 0 ? '+' : ''}${fixed(raw.bias, 1)} mm` : '—'}</dd></div>
+                      <div><dt>RMSE raw → ours</dt><dd className="num">{raw && ours ? `${fixed(raw.rmse, 1)} → ${fixed(ours.rmse, 1)}` : '—'}</dd></div>
+                      <div><dt>Recognised</dt><dd className="num">{metric ? pct(metric.recall) : '—'}</dd></div>
                     </dl>
-                    <AnimatePresence initial={false}>
-                      {isOpen && (
-                        <m.div className="regime-more" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease }}>
-                          <p><strong>Gate decision:</strong> {gate && gateReason(gate.reason)}</p>
-                          <p className="muted small">{gate?.events.toLocaleString('en-IN')} heavy-rain events in the held-out season.</p>
-                        </m.div>
-                      )}
-                    </AnimatePresence>
-                    <span className="regime-toggle muted small">{isOpen ? 'Hide gate decision' : 'Show gate decision'}</span>
-                  </button>
-                </Reveal>
-              );
-            })}
-          </div>
+                    <p className="regime-gate small">{gate ? gateReason(gate.reason) : ''}</p>
+                  </Reveal>
+                );
+              })}
+            </div>
+          </section>
 
-          <Section title="How well regimes are recognised" description="Held-out season. Precision: how often a predicted regime was right. Recall: how often a real regime was caught.">
-            <ChartCard title="Regime classifier accuracy" legend={<LegendRow items={series.map((s) => ({ label: s.label, color: s.color }))} />}>
-              <ResponsiveContainer width="100%" height="100%" minHeight={300}>
-                <BarChart data={v.classifier.per_regime} barGap={2} barCategoryGap="28%">
-                  <CartesianGrid vertical={false} stroke={ct.grid} />
-                  <XAxis dataKey="regime" tick={ct.tick} axisLine={{ stroke: ct.grid }} tickLine={false} interval={0} />
-                  <YAxis domain={[0, 1]} tickFormatter={pct} tick={ct.tick} axisLine={false} tickLine={false} width={44} />
-                  <Tooltip cursor={{ fill: ct.cursor }} content={<ChartTooltip format={pct} />} />
-                  {series.map((s) => <RBar key={s.key} dataKey={s.key} name={s.label} fill={s.color} radius={[4, 4, 0, 0]} maxBarSize={28} />)}
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </Section>
+          <section className="section">
+            <Reveal className="section-head">
+              <div>
+                <span className="label">Classifier check · held-out season</span>
+                <h2 className="display section-display">How often each regime <em>is recognised.</em></h2>
+                <p>Each row is the true regime; the cells show where its district-days were classified. A strong diagonal means the right correction is chosen.</p>
+              </div>
+            </Reveal>
+            <Reveal className="card confusion-card"><Confusion matrix={v.classifier.confusion_matrix} regimes={v.regimes} /></Reveal>
+          </section>
         </>
       )}
     </div>

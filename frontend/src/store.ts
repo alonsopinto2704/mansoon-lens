@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { Theme } from './lib';
 
 type ThemePref = Theme | 'system';
-export type Layer = 'corrected' | 'raw' | 'observed' | 'diff' | 'probability' | 'regime';
+export type Layer = 'corrected' | 'raw' | 'observed' | 'diff' | 'probability' | 'warning' | 'regime';
 export type Source = 'live' | 'season';
 type State = {
   source: Source; date: string; lead: number; layer: Layer; theme: ThemePref;
