@@ -24,6 +24,9 @@ function DistrictOutlook({ id, date, lead, live }: { id: string; date: string; l
     queryKey: ['district', id, day, lead], queryFn: () => get<District>(`/districts/${id}?date=${day}&lead=${lead}`),
     enabled: !live && Boolean(meta.data?.dates.includes(day)),
   })) });
+  // Summing is only meaningful within one live run; season days are separate forecasts.
+  const liveRows = live ? [1, 2, 3, 4, 5].map((n) => run.data?.items.find((i) => i.district_id === id && i.lead === n)) : [];
+  const total = liveRows.length && liveRows.every(Boolean) ? liveRows.reduce((sum, r) => sum + r!.served_mm, 0) : null;
   return <div className="drawer-section">
     <h3>{live ? 'Five-day outlook' : 'Five-day season view'}</h3>
     <p className="muted small">{live ? 'Rainfall and heavy-rain chance from the same run. Select a day for details.' : `Consecutive valid dates at day +${lead}; these are separate historical forecasts.`}</p>
@@ -41,7 +44,7 @@ function DistrictOutlook({ id, date, lead, live }: { id: string; date: string; l
         </button>;
       })}
     </div>
-    <p className="muted small">Heavy rain: ≥ 64.5 mm in 24 hours.</p>
+    <p className="muted small">{live && total !== null ? <>Five-day total <b className="num">{mm(total)}</b> · </> : null}Heavy rain: ≥ 64.5 mm in 24 hours.</p>
     {!live && season.some((q) => q.isError) && <button className="link" onClick={() => season.forEach((q) => { if (q.isError) void q.refetch(); })}>Retry unavailable days</button>}
   </div>;
 }

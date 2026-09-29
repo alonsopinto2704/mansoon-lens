@@ -24,7 +24,9 @@ Build the attached MonsoonLens brief (SIH 2026, PS 26080) as a runnable local we
 - District drawer: five-day outlook (live run, or consecutive season dates at a fixed lead); P10–P90 relabelled "Correction model range" with a note when the gate serves raw.
 - URL carries `source`, `lead`, `layer`, `date` (season), `district`; copied live links add `shared_run` and show a notice if that run is no longer current (`frontend/src/forecastUrl.ts`, `ForecastLocation` in `App.tsx`).
 - Alerts "All" ranks purely by chance; CSV adds threshold, valid date, lead, source and run time. Observed layer uses a neutral "No observation" colour.
-- Tests: 23 pytest, 11 Vitest, `tsc -b`, `vite build` pass.
+- Later the same day: saved-district watchlist (`frontend/src/watchlist.ts`, star in the drawer, table on Overview); per-state rollup on Alerts; five-day live total in the drawer; `[`/`]` and arrow keys switch days; plainer information-first UI (no eyebrow caps, scroll fades or numbered cards).
+- Backend: `backend/common.py` holds shared validators, upload checks and CSV/PDF builders for both `app.py` and `lite_app.py`. Bad input returns 400 `{error, code, details}`; unknown `/api/v1/*` returns JSON 404; NaN serialises as `null`. Pydantic is no longer used.
+- Tests: 65 pytest (incl. `test_validation.py`, parametrised over both apps), 13 Vitest, `tsc -b`, `vite build` pass. `backend/adapters/` is unused stub code (kept; delete if real adapters are not planned).
 
 ## Exact local commands on this Windows host
 
@@ -54,7 +56,7 @@ Start `python -m backend.app` in one terminal and `pnpm dev` from `frontend/` in
 1. Run `docker build .` on a machine with Docker and check that `/api/v1/health` and `/api/v1/live` work in the container (the live feed needs outbound HTTPS).
 2. Live corrected values come from a model trained on synthetic predictors, with humidity, wind and pressure z-scored per day as stand-ins. Real skill needs NCUM forecasts plus IMD gridded truth.
 3. District changes after 2023 are unchecked, apart from Rajasthan's 2024 merge.
-4. There is no ESLint config (`pnpm lint` fails); a formal WCAG/Lighthouse pass is still pending.
+4. There is no ESLint setup (the unused `lint` script was removed); `tsc -b` with unused-locals checks is the lint gate. Token contrast was checked against WCAG AA; a full Lighthouse pass is still pending.
 
 ## Agent continuation rules
 

@@ -9,9 +9,10 @@
   --surface-3: #e9e5db;
   --border: #e5e0d5;
   --border-strong: #d0c9ba;
+  --border-input: #8a8474;
   --text: #13212f;
   --text-2: #46515d;
-  --text-3: #69727d;
+  --text-3: #5e6772;
   --accent: #1b5fa6;
   --accent-hover: #154e8a;
   --accent-soft: #e6eef7;
@@ -40,6 +41,7 @@
   --surface-3: #1c2e45;
   --border: #22354b;
   --border-strong: #30475f;
+  --border-input: #5c7893;
   --text: #eef2f6;
   --text-2: #b7c3d0;
   --text-3: #8898a9;
@@ -126,7 +128,7 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .btn:active:not(:disabled) { transform: scale(0.98); }
 .btn:disabled { opacity: 0.5; }
 .btn-primary { background: var(--accent); color: #fff; }
-:root[data-theme='dark'] .btn-primary { color: #06121f; }
+:root[data-theme='dark'] .btn-primary, :root[data-theme='dark'] .btn-light, :root[data-theme='dark'] .skip-link, :root[data-theme='dark'] .quiet-mark { color: #06121f; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); box-shadow: var(--shadow-sm); }
 .btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
@@ -139,7 +141,7 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .chip-good { background: var(--good-soft); color: var(--good); }
 .chip-warn { background: var(--warn-soft); color: var(--warn-text); }
-.input { display: inline-flex; align-items: center; height: 38px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; transition: border-color .15s, box-shadow .15s; }
+.input { display: inline-flex; align-items: center; height: 38px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; transition: border-color .15s, box-shadow .15s; }
 select.input { padding-right: 32px; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23667285' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; cursor: pointer; }
 .input:hover { border-color: var(--text-3); }
 .input:focus-within, select.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
