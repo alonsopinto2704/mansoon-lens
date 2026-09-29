@@ -1,5 +1,7 @@
 # MonsoonLens
 
+Public repository: [alonsopinto2704/mansoon-lens](https://github.com/alonsopinto2704/mansoon-lens).
+
 MonsoonLens is a Smart India Hackathon 2026 demo for problem statement 26080 by Team Code Stormers. It classifies six synthetic monsoon regimes, blends regime-specific rainfall corrections, estimates heavy-rainfall probabilities, serves district forecasts, and reports held-out verification.
 
 > **Demo running on synthetic data. Not an operational forecast.** Do not use it for warnings or decisions.

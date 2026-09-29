@@ -1,5 +1,7 @@
 # MonsoonLens handoff brain
 
+Public GitHub repository: [alonsopinto2704/mansoon-lens](https://github.com/alonsopinto2704/mansoon-lens). Local `main` tracks `origin/main`.
+
 Updated: 2026-09-29. Update this file after material code, data, test, or deployment changes so a new agent can continue from the actual state.
 
 ## Goal and fixed requirements
