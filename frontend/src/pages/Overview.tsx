@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, MapPinned, Search } from 'lucide-react';
-import { useLive, useVerification } from '../data';
+import { Search, X } from 'lucide-react';
+import { useLive, useLiveRun, useVerification } from '../data';
+import { useSaved } from '../watchlist';
 import { escapeHtml, levelFill, LEVELS, mm, pct, warningLevel, type Forecast } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { IndiaMap } from '../components/IndiaMap';
@@ -16,11 +17,43 @@ const steps = [
 
 const dayName = (iso?: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' }) : '');
 
+
+/** Five-day live outlook for districts the user starred in the district panel. */
+function SavedDistricts() {
+  const ids = useSaved((s) => s.ids);
+  const toggle = useSaved((s) => s.toggle);
+  const run = useLiveRun(true);
+  const theme = useResolvedTheme();
+  const dates = run.data?.dates ?? [];
+  const rows = ids.map((id) => ({ id, days: [1, 2, 3, 4, 5].map((lead) => run.data?.items.find((i) => i.district_id === id && i.lead === lead)) }))
+    .filter((r) => r.days.some(Boolean));
+  if (!run.data?.items.length) return null;
+  return (
+    <section className="saved">
+      <div className="saved-head">
+        <h2>Your districts</h2>
+        <p className="muted small">{rows.length ? 'Live rainfall and heavy-rain chance for the next five days.' : 'Open a district on the map and press the star to follow it here.'}</p>
+      </div>
+      {rows.length > 0 && <div className="table-scroll"><table className="table saved-table">
+        <thead><tr><th>District</th>{dates.map((d) => <th key={d}>{new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })}</th>)}<th><span className="sr-only">Remove</span></th></tr></thead>
+        <tbody>{rows.map(({ id, days }) => {
+          const first = days.find(Boolean)!;
+          return <tr key={id}>
+            <th scope="row"><Link to={`/forecast?source=live&district=${id}`}>{first.district}</Link><small>{first.state}</small></th>
+            {days.map((d, n) => <td key={n}>{d ? <Link className="saved-cell" to={`/forecast?source=live&lead=${n + 1}&district=${id}`}
+              style={{ ['--level' as string]: levelFill(warningLevel(d), theme) }} title={`${warningLevel(d).name} · ${warningLevel(d).action}`}>
+              <b className="num">{mm(d.served_mm)}</b><small>{pct(d.prob_64_5)}</small></Link> : '—'}</td>)}
+            <td><button className="icon-btn" onClick={() => toggle(id)} aria-label={`Stop following ${first.district}`}><X size={16} /></button></td>
+          </tr>;
+        })}</tbody>
+      </table></div>}
+    </section>
+  );
+}
 /** Live map of today's colour-coded risk, with the numbers a duty officer would ask for first. */
 function LiveHero() {
   const live = useLive(true);
   const theme = useResolvedTheme();
-  const setSource = useForecastStore((s) => s.setSource);
   const items: Forecast[] = useMemo(() => live.data?.items ?? [], [live.data]);
   const counts = LEVELS.map((l) => items.filter((i) => warningLevel(i).key === l.key).length);
   const wettest = items.reduce<Forecast | null>((w, i) => (!w || i.served_mm > w.served_mm ? i : w), null);
@@ -31,10 +64,9 @@ function LiveHero() {
     <div className="hero-map card">
       <div className="hero-map-head">
         <div>
-          <span className="label">{items.length ? <><span className="live-dot" aria-hidden /> Live · run {at}</> : 'Live NWP'}</span>
+          <span className="hero-map-meta">{items.length ? <><span className="live-dot" aria-hidden /> Live NWP · run {at}</> : 'Live NWP'}</span>
           <strong>{live.data?.date ? dayName(live.data.date) : 'Today’s forecast'}</strong>
         </div>
-        <Link to="/forecast" className="link" onClick={() => setSource('live')}>Open map <ArrowRight size={14} aria-hidden /></Link>
       </div>
       <div className="hero-map-body">
         {live.isError && !items.length ? <div className="pad"><ErrorState error={live.error} /></div>
@@ -69,9 +101,8 @@ function Evidence() {
   return (
     <section className="evidence">
       <Reveal className="evidence-head">
-        <span className="label">2025 synthetic test season</span>
-        <h2 className="display section-display">What changed after correction?</h2>
-        <p className="evidence-context">The delivered forecast, including raw fallbacks, compared with raw rainfall and a global correction. These are retrospective synthetic results: the gate was chosen on the same season. They do not measure live forecast skill.</p>
+        <h2>What changed after correction?</h2>
+        <p className="evidence-context muted">2025 synthetic test season. The delivered forecast, including raw fallbacks, compared with raw rainfall and a global correction. These are retrospective synthetic results: the gate was chosen on the same season. They do not measure live forecast skill.</p>
       </Reveal>
       <div className="evidence-grid">
         {!v ? Array.from({ length: 3 }, (_, i) => <div key={i} className="figure"><Skeleton height={90} /></div>) : figures.map((f, i) => (
@@ -93,7 +124,7 @@ function Evidence() {
           </Reveal>
         )}
       </div>
-      <Link to="/verification" className="link">Read the full verification <ArrowRight size={14} aria-hidden /></Link>
+      <Link to="/verification" className="link">Full verification</Link>
     </section>
   );
 }
@@ -114,7 +145,7 @@ function DistrictJump() {
   return (
     <Reveal as="section" className="jump">
       <div>
-        <h2 className="display section-display">Find your district.</h2>
+        <h2>Find your district</h2>
         <p>Compare rainfall estimates and heavy-rain chances for the next five days.</p>
       </div>
       <form className="jump-form" onSubmit={submit} role="search">
@@ -123,56 +154,38 @@ function DistrictJump() {
           <input list="district-names" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type a district, e.g. Pune" aria-label="District name" />
         </label>
         <datalist id="district-names">{names.map((n) => <option key={n.id} value={n.label} />)}</datalist>
-        <button className="btn btn-light" type="submit">Show forecast <ArrowRight size={16} aria-hidden /></button>
+        <button className="btn btn-light" type="submit">Show forecast</button>
       </form>
     </Reveal>
   );
 }
 
 export default function Overview() {
+  const setSource = useForecastStore((st) => st.setSource);
   return (
     <div className="page overview">
       <section className="hero">
         <div className="hero-copy">
-          <span className="label">India / District rainfall outlook</span>
-          <h1>The monsoon,<br />district by district.</h1>
-          <p className="lead">Explore the next five days of rain, the weather pattern behind it, and where a correction may help.</p>
-          <div className="hero-actions">
-            <Link className="btn btn-primary btn-lg" to="/forecast"><MapPinned size={17} aria-hidden /> Explore the forecast</Link>
-            <Link className="link" to="/method">See how it works <ArrowRight size={16} aria-hidden /></Link>
-          </div>
-          <dl className="hero-facts">
-            <div><dt>Coverage</dt><dd>781 districts</dd></div>
-            <div><dt>Outlook</dt><dd>1–5 days</dd></div>
-            <div><dt>Weather patterns</dt><dd>6 regimes</dd></div>
-          </dl>
-          <p className="hero-note">Research prototype · Live NWP input, correction trained on synthetic data.</p>
+          <h1>District rainfall outlook</h1>
+          <p className="lead">Five-day rainfall and heavy-rain chance for 781 districts, using six weather regimes.</p>
+          <Link className="btn btn-primary" to="/forecast" onClick={() => setSource('live')}>Open forecast map</Link>
         </div>
+        <p className="hero-note">Research prototype · Live NWP input, correction trained on synthetic data. Not an official forecast; for warnings, follow IMD.</p>
         <LiveHero />
       </section>
+
+      <SavedDistricts />
 
       <Evidence />
 
       <section className="section">
-        <Reveal className="section-head">
-          <div>
-            <span className="label">How it works</span>
-            <h2 className="display section-display">From model rainfall to a district outlook.</h2>
-          </div>
-          <Link to="/method" className="link">The full method <ArrowRight size={14} aria-hidden /></Link>
-        </Reveal>
-        <ol className="rail">
-          {steps.map((s, i) => (
-            <Reveal as="li" key={s.title} delay={i * 0.07} className="rail-step">
-              <Link to={s.to}>
-                <span className="rail-num">0{i + 1}</span>
-                <h3>{s.title}</h3>
-                <p>{s.text}</p>
-                <span className="feature-link">Explore <ArrowRight size={14} aria-hidden /></span>
-              </Link>
-            </Reveal>
+        <h2>How it works</h2>
+        <ul className="how-list">
+          {steps.map((st) => (
+            <li key={st.title}><Link to={st.to}><b>{st.title}.</b></Link> {st.text}</li>
           ))}
-        </ol>
+        </ul>
+        <p className="muted small">Details on the <Link to="/method" className="link">method page</Link>.</p>
       </section>
 
       <DistrictJump />

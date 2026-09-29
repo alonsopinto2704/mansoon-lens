@@ -9,7 +9,7 @@ export function PageHeader({ title, eyebrow, description, actions }: { title: Re
   return (
     <header className="page-header">
       <div>
-        {eyebrow && <span className="label">{eyebrow}</span>}
+        {eyebrow && <p className="page-eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p>{description}</p>}
       </div>
@@ -33,15 +33,9 @@ export function Section({ title, description, action, children }: { title: strin
   );
 }
 
-/** A brief entrance for secondary sections; reduced-motion users see content immediately. */
-export function Reveal({ children, delay = 0, className, as = 'div' }: { children: ReactNode; delay?: number; className?: string; as?: 'div' | 'section' | 'li' | 'article' }) {
-  const Tag = m[as];
-  const reduced = useReducedMotion();
-  return (
-    <Tag className={className} initial={reduced ? false : { opacity: 0, y: 6 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: reduced ? 0 : 0.22, ease, delay: reduced ? 0 : Math.min(delay, 0.08) }}>
-      {children}
-    </Tag>
-  );
+/** Plain wrapper kept for API compatibility: content renders immediately, with no entrance animation. */
+export function Reveal({ children, className, as: Tag = 'div' }: { children: ReactNode; delay?: number; className?: string; as?: 'div' | 'section' | 'li' | 'article' }) {
+  return <Tag className={className}>{children}</Tag>;
 }
 
 /** Shows the real value immediately and tweens when it changes (never renders a placeholder number). */

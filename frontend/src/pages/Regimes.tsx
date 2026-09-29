@@ -104,8 +104,7 @@ export default function RegimesPage() {
           <section className="section">
             <Reveal className="section-head">
               <div>
-                <span className="label">Why regimes matter</span>
-                <h2 className="display section-display">The raw model errs <em>differently in each.</em></h2>
+                                <h2>Why regimes matter: the raw model errs differently in each</h2>
               </div>
             </Reveal>
             <div className="regime-grid">
@@ -137,8 +136,7 @@ export default function RegimesPage() {
           <section className="section">
             <Reveal className="section-head">
               <div>
-                <span className="label">Classifier check · held-out season</span>
-                <h2 className="display section-display">How often each regime <em>is recognised.</em></h2>
+                                <h2>Classifier check: how often each regime is recognised (held-out season)</h2>
                 <p>Each row is the true regime; the cells show where its district-days were classified. A strong diagonal means the right correction is chosen.</p>
               </div>
             </Reveal>

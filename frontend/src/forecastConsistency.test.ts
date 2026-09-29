@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toggleSaved } from './watchlist';
 import { alertsCsv, compareAlerts, observationColor, rainColor, type Forecast } from './lib';
 import { readForecastView } from './forecastUrl';
 
@@ -27,5 +28,13 @@ describe('forecast context and interpretation', () => {
       expect(observationColor(null, theme)).not.toBe(rainColor(0, theme));
       expect(observationColor(0, theme)).toBe(rainColor(0, theme));
     }
+  });
+});
+
+describe('saved districts', () => {
+  it('toggles, keeps newest first and caps the list', () => {
+    expect(toggleSaved(['a'], 'b')).toEqual(['b', 'a']);
+    expect(toggleSaved(['b', 'a'], 'b')).toEqual(['a']);
+    expect(toggleSaved(Array.from({ length: 8 }, (_, i) => `d${i}`), 'new')).toHaveLength(8);
   });
 });

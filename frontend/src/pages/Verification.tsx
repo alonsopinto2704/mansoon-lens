@@ -55,7 +55,7 @@ export default function VerificationPage() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Verification · held-out 2025 season" title={<>How much better, <em>and where.</em></>}
+      <PageHeader eyebrow="Held-out 2025 season (synthetic)" title="Verification: how much better, and where"
         description="Raw rainfall, a global correction, the correction before gating and the delivered forecast, compared on the synthetic 2025 season. Headline scores describe the delivered forecast."
         actions={<>
           <a className="btn btn-secondary" href="/api/v1/verification/report.csv"><Download size={16} aria-hidden /> CSV</a>

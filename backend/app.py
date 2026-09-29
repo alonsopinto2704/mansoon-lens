@@ -1,7 +1,6 @@
 """Versioned Flask API for the synthetic MonsoonLens demo."""
 from functools import lru_cache
 from io import BytesIO, StringIO
-from pathlib import Path
 import csv
 import gzip
 import json

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
-import { Check, Info, Link2, X } from 'lucide-react';
+import { Check, Info, Link2, Star, X } from 'lucide-react';
 import { formatDate, gateReason, get, mm, pct, probColor, regimeColor, warningLevel, type District } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { useLiveRun, useMeta } from '../data';
+import { useSaved } from '../watchlist';
 import { Bar, ErrorState, GateChip, LevelChip, LoadingBlock, ease } from './ui';
 
 const driverLabels: Record<string, string> = { moisture: 'Moisture index', wind: 'Wind index', mslp: 'Pressure anomaly', terrain_m: 'Terrain (m)', coast_km: 'Distance to coast (km)' };
@@ -131,6 +132,15 @@ function Content({ id, date, lead, live }: { id: string; date: string; lead: num
   );
 }
 
+function SaveButton({ id }: { id: string }) {
+  const { ids, toggle } = useSaved();
+  const saved = ids.includes(id);
+  return <button className={`icon-btn${saved ? ' is-saved' : ''}`} onClick={() => toggle(id)} aria-pressed={saved}
+    aria-label={saved ? 'Remove from saved districts' : 'Save district to the overview'} title={saved ? 'Saved' : 'Save district'}>
+    <Star size={17} fill={saved ? 'currentColor' : 'none'} />
+  </button>;
+}
+
 /** Copies the current URL (which carries ?district=) so a district forecast can be shared. */
 function CopyLink() {
   const [done, setDone] = useState(false);
@@ -203,6 +213,7 @@ export function DistrictDrawer({ id, name, state, date, lead, live, onClose }: {
                 <p>{state}{state ? ' · ' : ''}{date && `${formatDate(date)} · `}Day +{lead}</p>
               </div>
               <div className="drawer-actions">
+                {id && <SaveButton id={id} />}
                 <CopyLink />
                 <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Close district details"><X size={18} /></button>
               </div>

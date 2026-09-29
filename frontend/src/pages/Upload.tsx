@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { AnimatePresence, m } from 'motion/react';
-import { ArrowRight, Download, FileSpreadsheet, UploadCloud, X } from 'lucide-react';
+import { Download, FileSpreadsheet, UploadCloud, X } from 'lucide-react';
 import { mm, pct } from '../lib';
 import { ErrorState, GateChip, PageHeader, Section, ease } from '../components/ui';
 
@@ -50,7 +50,7 @@ export default function UploadPage() {
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Try the model" title={<>Run your own <em>forecast rows.</em></>} description="Upload a CSV of raw forecasts and predictors; each row comes back with its regime, corrected range, served value, heavy-rain chance and gate decision." />
+      <PageHeader title="Run your own forecast rows" description="Upload a CSV of raw forecasts and predictors; each row comes back with its regime, corrected range, served value, heavy-rain chance and gate decision." />
 
       <div className="upload-layout">
         <div className="card pad">
@@ -75,7 +75,7 @@ export default function UploadPage() {
             </AnimatePresence>
           </div>
           <button className="btn btn-primary btn-block" disabled={!file || busy} onClick={submit}>
-            {busy ? <><span className="spinner" aria-hidden /> Processing…</> : <>Run correction <ArrowRight size={16} aria-hidden /></>}
+            {busy ? <><span className="spinner" aria-hidden /> Processing…</> : <>Run correction</>}
           </button>
           {error && <div className="mt"><ErrorState error={error} /></div>}
         </div>

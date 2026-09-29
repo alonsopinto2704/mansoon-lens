@@ -14,7 +14,6 @@ export type Score = { rmse: number; bias: number; pod: number | null; far: numbe
 export type Verification = { subset_rows: Record<string, number>; delivered_evaluation: string; reliability_by_group: Record<string, Record<string, {forecast: number; observed: number; count: number}[]>>; training_rows: number; validation_rows: number; test_rows: number; regimes: string[]; thresholds: number[]; classifier: { confusion_matrix: number[][]; per_regime: {regime: string; precision: number; recall: number; support: number}[] }; scores: Record<string, Record<string, Record<string, Score>>>; gate: Record<string, Gate>; reliability: Record<string, {forecast: number; observed: number; count: number}[]> };
 export type Gate = { status: string; reason: string; events: number; confidence_intervals?: Record<string, [number, number]> };
 export type Meta = { dates: string[]; district_count: number; regimes?: string[]; thresholds?: number[] };
-export type Alert = { district_id: string; district: string; state: string; probability: number; dominant_regime: string; gate_status: string; served_mm: number };
 
 export type ProbabilityKey = 'prob_64_5' | 'prob_115_6' | 'prob_204_5';
 export function compareAlerts(a: Forecast, b: Forecast, key: ProbabilityKey, byChance: boolean) {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, m } from 'motion/react';
-import { ArrowRight, BellRing, CheckCheck, Database, GitMerge, Layers, MapPinned, ShieldCheck } from 'lucide-react';
+import { BellRing, CheckCheck, Database, GitMerge, Layers, MapPinned, ShieldCheck } from 'lucide-react';
 import { PageHeader, Reveal, Section, ease } from '../components/ui';
 
 const steps = [
@@ -41,7 +41,7 @@ export default function MethodPage() {
   const Icon = step.icon;
   return (
     <div className="page">
-      <PageHeader eyebrow="Method" title={<>From raw model rain <em>to a district forecast.</em></>} description="Every number on this site traces back through seven steps. Select a step to see what happens there." />
+      <PageHeader title="Method: from raw model rain to a district forecast" description="Every number on this site traces back through seven steps. Select a step to see what happens there." />
 
       <div className="pipeline">
         <ol className="pipeline-steps">
@@ -59,7 +59,7 @@ export default function MethodPage() {
           <AnimatePresence mode="wait">
             <m.div key={active} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25, ease }}>
               <span className="feature-icon feature-icon-lg"><Icon size={26} aria-hidden /></span>
-              <span className="label">Step {active + 1} of {steps.length}</span>
+              <span className="muted small">Step {active + 1} of {steps.length}</span>
               <h2>{step.title}</h2>
               <p>{step.text}</p>
               {active === 5 && (
@@ -72,8 +72,8 @@ export default function MethodPage() {
               <div className="pipeline-nav">
                 <button className="btn btn-secondary" disabled={active === 0} onClick={() => setActive(active - 1)}>Previous</button>
                 {active < steps.length - 1
-                  ? <button className="btn btn-primary" onClick={() => setActive(active + 1)}>Next step <ArrowRight size={16} aria-hidden /></button>
-                  : <Link className="btn btn-primary" to="/verification">See the results <ArrowRight size={16} aria-hidden /></Link>}
+                  ? <button className="btn btn-primary" onClick={() => setActive(active + 1)}>Next step</button>
+                  : <Link className="btn btn-primary" to="/verification">See the results</Link>}
               </div>
             </m.div>
           </AnimatePresence>
