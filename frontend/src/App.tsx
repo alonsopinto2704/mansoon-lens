@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, m } from 'motion/react';
 import { Menu, Monitor, Moon, Sun, X } from 'lucide-react';
@@ -37,6 +37,23 @@ function ForecastLocation() {
     }
   }, [source, date, lead, layer, location.pathname, location.search, navigate]);
   return null;
+}
+
+/** Keeps a page error from blanking the whole site. A chunk missing after a redeploy reloads once to fetch the new build. */
+class PageBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) {
+    const stale = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(error.message);
+    try {
+      if (stale && !sessionStorage.getItem('ml-reloaded')) { sessionStorage.setItem('ml-reloaded', '1'); window.location.reload(); }
+    } catch { /* storage unavailable: show the message instead */ }
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <div className="page"><h1>This page could not be shown</h1><p className="muted">{this.state.error.message}</p>
+      <button className="btn btn-primary mt" onClick={() => window.location.reload()}>Reload</button></div>;
+  }
 }
 
 const Overview = lazy(() => import('./pages/Overview'));
@@ -164,6 +181,7 @@ export default function App() {
       <main id="main" className="main">
         <AnimatePresence mode="wait" initial={false}>
           <m.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.22, ease }}>
+            <PageBoundary>
             <Suspense fallback={<div className="page"><LoadingBlock rows={6} /></div>}>
               <Routes location={location}>
                 <Route path="/" element={<Overview />} />
@@ -177,6 +195,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
+            </PageBoundary>
           </m.div>
         </AnimatePresence>
       </main>
