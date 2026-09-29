@@ -128,7 +128,7 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .footer-brand p { font-size: 13px; color: var(--text-3); }
 .footer-nav { display: grid; grid-template-columns: repeat(2, auto); gap: 8px 32px; align-content: start; font-size: 14px; color: var(--text-2); }
 .footer-nav a:hover { color: var(--text); }
-.footer-credits { max-width: var(--page); margin: 0 auto; padding: 14px 24px 22px; display: flex; flex-wrap: wrap; gap: 6px 22px; border-top: 1px solid var(--border); font: 11px var(--mono); letter-spacing: .04em; color: var(--text-3); }
+.footer-credits { max-width: calc(var(--page) - 48px); margin: 0 auto; padding: 14px 0 22px; display: flex; flex-wrap: wrap; gap: 6px 22px; border-top: 1px solid var(--border); font: 11px var(--mono); letter-spacing: .04em; color: var(--text-3); }
 
 /* ---------- Primitives ---------- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
@@ -199,6 +199,7 @@ select.input { padding-right: 32px; appearance: none; background-image: url("dat
 
 .toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 24px; padding: 16px 18px; margin-bottom: 16px; }
 .field { display: grid; gap: 6px; min-width: 0; }
+.filter-bar { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; padding: 0 0 18px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
 .field-label { font-size: 12px; font-weight: 600; color: var(--text-3); }
 
 /* ---------- Overview ---------- */
@@ -614,3 +615,5 @@ svg.live-dot { width: 15px; height: 15px; background: none; color: var(--good); 
 @media (max-width: 480px) {
   .live-status { display: none; }
 }
+@media (max-width: 1368px) { .footer-credits { margin-inline: 24px; } }
+@media (max-width: 720px) { .footer-credits { margin-inline: 16px; } }

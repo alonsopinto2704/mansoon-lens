@@ -6,7 +6,7 @@ import { fixed, gateReason, mm, modelColors, pct, type Score } from '../lib';
 import { useResolvedTheme } from '../store';
 import { ChartCard, ChartTooltip, LegendRow, chartTheme } from '../components/charts';
 import { PerformanceDiagram } from '../components/PerformanceDiagram';
-import { Field, Toolbar } from '../components/Controls';
+import { Field } from '../components/Controls';
 import { CountUp, ErrorState, GateChip, LoadingBlock, PageHeader, Reveal, Section, Segmented } from '../components/ui';
 
 const MODELS = ['Raw', 'Global', 'Regime-aware'] as const;
@@ -61,7 +61,7 @@ export default function VerificationPage() {
           <a className="btn btn-secondary" href="/api/v1/verification/report.pdf"><Download size={16} aria-hidden /> PDF report</a>
         </>} />
 
-      <Toolbar>
+      <div className="filter-bar">
         <Field label="Subset">
           <select className="input" value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Subset">
             <optgroup label="All"><option>Overall</option></optgroup>
@@ -73,7 +73,7 @@ export default function VerificationPage() {
           <Segmented id="vthreshold" label="Rainfall threshold" value={threshold} onChange={setThreshold}
             options={v.thresholds.map((t) => ({ value: String(t), label: `≥ ${t} mm` }))} />
         </Field>
-      </Toolbar>
+      </div>
 
       <div className="kpis">
         <Reveal className="kpi card"><span>Forecasts scored</span><strong><CountUp value={v.test_rows} /></strong><small>held-out season</small></Reveal>

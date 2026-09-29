@@ -35,6 +35,9 @@ export const fixed = (n: number | null | undefined, digits = 2) => (typeof n ===
 export const formatDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 export type Theme = 'light' | 'dark';
+/** Page-title date: "Wednesday, 30 September", with the year for past (held-out season) dates. */
+export const titleDate = (iso: string, withYear = false) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', ...(withYear ? { year: 'numeric' } : {}) });
 
 const reasonTerms: Record<string, string> = { raw_rmse: 'RMSE vs raw', global_rmse: 'RMSE vs global fix', raw_csi: 'CSI vs raw', global_csi: 'CSI vs global fix' };
 /** Turns backend gate reasons ("No verified improvement in global_rmse, raw_csi") into plain language. */

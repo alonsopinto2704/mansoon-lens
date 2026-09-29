@@ -15,6 +15,8 @@ type Props<T extends { district_id: string }> = {
   selected?: string | null;
   onSelect?: (id: string) => void;
   height?: number | string;
+  /** Hide zoom and reset controls (small preview maps). */
+  compact?: boolean;
 };
 
 type Feature = { type: 'Feature'; properties: { district_id?: string; district?: string; state: string }; geometry: object };
@@ -25,7 +27,7 @@ const useGeo = (name: 'districts' | 'states') =>
 
 const INDIA: L.LatLngBoundsExpression = [[6.5, 68], [37.2, 97.5]];
 
-function FitIndia() {
+function FitIndia({ compact }: { compact: boolean }) {
   const map = useMap();
   useEffect(() => {
     const fit = () => map.fitBounds(INDIA, { padding: [8, 8] });
@@ -34,6 +36,7 @@ function FitIndia() {
     observer.observe(map.getContainer());
     return () => observer.disconnect();
   }, [map]);
+  if (compact) return null;
   return (
     <button type="button" className="map-reset" title="Fit India" aria-label="Reset map view to all of India"
       onClick={(event) => { event.stopPropagation(); map.fitBounds(INDIA, { padding: [8, 8] }); }}>
@@ -43,7 +46,7 @@ function FitIndia() {
 }
 
 /** District choropleth over official-outline district polygons. No tile server: works offline. */
-export function IndiaMap<T extends { district_id: string }>({ items, color, tooltip, selected, onSelect, height = '100%' }: Props<T>) {
+export function IndiaMap<T extends { district_id: string }>({ items, color, tooltip, selected, onSelect, height = '100%', compact = false }: Props<T>) {
   const districts = useGeo('districts');
   const live = useForecastStore((s) => s.source === 'live');
   const states = useGeo('states');
@@ -86,8 +89,8 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
   return (
     <MapContainer bounds={INDIA} maxBounds={[[0, 58], [42, 108]]} minZoom={4} maxZoom={10} zoomSnap={0.25} scrollWheelZoom={false}
       attributionControl={false} zoomControl={false} className="leaflet-map" style={{ height }} renderer={L.svg({ padding: 0.5 })}>
-      <FitIndia />
-      <ZoomControl position="bottomright" />
+      <FitIndia compact={compact} />
+      {!compact && <ZoomControl position="bottomright" />}
       <AttributionControl prefix={false} />
       <GeoJSON data={districts.data as never} style={(f) => style(f?.properties?.district_id)} onEachFeature={onEach as never}
         attribution={`Boundaries: <a href="https://github.com/datta07/INDIAN-SHAPEFILES">datta07</a> (MIT)${live ? ' · NWP: <a href="https://open-meteo.com">Open-Meteo</a> (CC BY 4.0)' : ''}`} key={live ? 'live' : 'season'} />

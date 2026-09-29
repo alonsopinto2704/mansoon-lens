@@ -6,36 +6,36 @@ import {
   diffColor, diffLegend, escapeHtml, LEVELS, mm, pct, probColor, probLabels, probLegend, rainBand, rainBands, rainColor, rainLegend,
   levelFill, regimeColor, REGIMES, warningLevel, type District, type Forecast, type Theme,
 } from '../lib';
+import { titleDate } from '../lib';
 import { useForecastStore, useResolvedTheme, type Layer } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
 import { DayStrip, SourceControls, SourceNote } from '../components/Controls';
-import { Empty, ErrorState, LoadingBlock, Segmented, Skeleton } from '../components/ui';
+import { CountUp, Empty, ErrorState, LoadingBlock, Segmented, Skeleton } from '../components/ui';
 
 const signed = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)} mm`;
-const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
 type LayerSpec = { label: string; legend: string; value: (i: Forecast) => number; text: (i: Forecast) => string; color: (i: Forecast, t: Theme) => string; keys: (t: Theme) => { color: string; label: string }[] };
 const rainKeys = (t: Theme) => rainLegend(t).map((color, k) => ({ color, label: rainBands[k].label }));
 
 /** Everything a map layer needs: its value, colour, text and legend. */
 const layers: Record<Layer, LayerSpec> = {
-  corrected: { label: 'Served', legend: 'Served rainfall · IMD category', value: (i) => i.served_mm, text: (i) => mm(i.served_mm), color: (i, t) => rainColor(i.served_mm, t), keys: rainKeys },
+  corrected: { label: 'Served', legend: 'Served rainfall', value: (i) => i.served_mm, text: (i) => mm(i.served_mm), color: (i, t) => rainColor(i.served_mm, t), keys: rainKeys },
   warning: {
-    label: 'Warning level', legend: 'Colour code · IMD scheme', value: (i) => LEVELS.indexOf(warningLevel(i)) + i.prob_64_5, text: (i) => warningLevel(i).name,
+    label: 'Warning level', legend: 'Colour code (derived)', value: (i) => LEVELS.indexOf(warningLevel(i)) + i.prob_64_5, text: (i) => warningLevel(i).name,
     color: (i, t) => levelFill(warningLevel(i), t), keys: (t) => [...LEVELS].reverse().map((l) => ({ color: levelFill(l, t), label: `${l.name} · ${l.action}` })),
   },
   probability: {
     label: 'Heavy-rain chance', legend: 'Chance of ≥ 64.5 mm', value: (i) => i.prob_64_5, text: (i) => pct(i.prob_64_5),
     color: (i, t) => probColor(i.prob_64_5, t), keys: (t) => probLegend(t).map((color, k) => ({ color, label: probLabels[k] })),
   },
-  raw: { label: 'Raw model', legend: 'Raw NWP rainfall · IMD category', value: (i) => i.raw_mm, text: (i) => mm(i.raw_mm), color: (i, t) => rainColor(i.raw_mm, t), keys: rainKeys },
+  raw: { label: 'Raw model', legend: 'Raw NWP rainfall', value: (i) => i.raw_mm, text: (i) => mm(i.raw_mm), color: (i, t) => rainColor(i.raw_mm, t), keys: rainKeys },
   diff: {
     label: 'Change', legend: 'Served minus raw (mm)', value: (i) => i.served_mm - i.raw_mm, text: (i) => signed(i.served_mm - i.raw_mm),
     color: (i, t) => diffColor(i.served_mm - i.raw_mm, t), keys: (t) => diffLegend(t).map((color, k) => ({ color, label: ['Drier by 15+', 'Drier by 3–15', 'Within ±3', 'Wetter by 3–15', 'Wetter by 15+'][k] })),
   },
   observed: {
-    label: 'Observed', legend: 'Observed rainfall (held-out truth)', value: (i) => i.observed_mm ?? 0, text: (i) => (i.observed_mm === null ? '—' : mm(i.observed_mm)),
+    label: 'Observed', legend: 'Observed rainfall', value: (i) => i.observed_mm ?? 0, text: (i) => (i.observed_mm === null ? '—' : mm(i.observed_mm)),
     color: (i, t) => rainColor(i.observed_mm ?? 0, t), keys: rainKeys,
   },
   regime: {
@@ -102,7 +102,7 @@ export default function ForecastPage() {
       <header className="ws-head">
         <div>
           <span className="label">District forecast · {isLive ? 'live NWP, corrected' : 'held-out season'}</span>
-          <h1 className="ws-title">{date ? longDate(date) : loading ? 'Loading forecast…' : 'Forecast unavailable'}</h1>
+          <h1 className="ws-title">{date ? titleDate(date, !(isLive)) : loading ? 'Loading forecast…' : 'Forecast unavailable'}</h1>
         </div>
         <SourceControls />
       </header>
@@ -110,11 +110,11 @@ export default function ForecastPage() {
       <DayStrip />
 
       <div className="ws-stats" aria-live="polite">
-        <span><b className="num">{forecast.data ? items.length : '—'}</b> districts</span>
-        <span className={stats.alerts ? 'is-hot' : ''}><b className="num">{forecast.data ? stats.alerts : '—'}</b> at orange or red</span>
-        <span><b className="num">{forecast.data ? stats.heavy : '—'}</b> with ≥ 64.5 mm served</span>
-        <span><b className="num">{forecast.data ? stats.likely : '—'}</b> with ≥ 50% heavy-rain chance</span>
-        <span><b className="num">{forecast.data ? stats.corrected : '—'}</b> serving the correction</span>
+        <span><b>{forecast.data ? <CountUp value={items.length} /> : '—'}</b> districts</span>
+        <span className={stats.alerts ? 'is-hot' : ''}><b>{forecast.data ? <CountUp value={stats.alerts} /> : '—'}</b> at orange or red</span>
+        <span><b>{forecast.data ? <CountUp value={stats.heavy} /> : '—'}</b> with ≥ 64.5 mm served</span>
+        <span><b>{forecast.data ? <CountUp value={stats.likely} /> : '—'}</b> with ≥ 50% heavy-rain chance</span>
+        <span><b>{forecast.data ? <CountUp value={stats.corrected} /> : '—'}</b> serving the correction</span>
         {stats.wettest && <span className="ws-wettest">Wettest: <button className="link" onClick={() => setSelected(stats.wettest!.district_id)}>{stats.wettest.district}</button> <b className="num">{mm(stats.wettest.served_mm)}</b></span>}
       </div>
 

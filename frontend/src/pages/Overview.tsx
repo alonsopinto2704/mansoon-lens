@@ -40,7 +40,7 @@ function LiveHero() {
       <div className="hero-map-body">
         {live.isError && !items.length ? <div className="pad"><ErrorState error={live.error} /></div>
           : !items.length ? <Skeleton height="100%" className="map-skeleton" />
-          : <IndiaMap items={items} color={(i) => levelFill(warningLevel(i), theme)} tooltip={tooltip} />}
+          : <IndiaMap compact items={items} color={(i) => levelFill(warningLevel(i), theme)} tooltip={tooltip} />}
       </div>
       <div className="hero-map-foot">
         <ul className="level-counts" aria-label="Districts by warning level">

@@ -3,11 +3,12 @@ import { ChevronRight, Download, Search } from 'lucide-react';
 import { m } from 'motion/react';
 import { useForecast } from '../data';
 import { escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, warningLevel, type District, type Forecast, type Level } from '../lib';
+import { titleDate } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
 import { DayStrip, SourceControls, SourceNote } from '../components/Controls';
-import { Bar, Empty, ErrorState, GateChip, LevelChip, LoadingBlock, Segmented } from '../components/ui';
+import { Bar, CountUp, Empty, ErrorState, GateChip, LevelChip, LoadingBlock, Segmented } from '../components/ui';
 
 const thresholds = [
   { value: '64.5', label: 'Heavy', key: 'prob_64_5' },
@@ -18,7 +19,6 @@ type Threshold = (typeof thresholds)[number]['value'];
 type LevelFilter = 'yellow' | 'orange' | 'red' | 'all';
 const rankOf = (l: Level) => LEVELS.indexOf(l);
 const minRank: Record<LevelFilter, number> = { all: 0, yellow: 1, orange: 2, red: 3 };
-const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
 function exportCsv(rows: Forecast[], key: (typeof thresholds)[number]['key'], name: string) {
   const esc = (v: string | number) => (typeof v === 'string' && /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : String(v));
@@ -68,7 +68,7 @@ export default function AlertsPage() {
       <div className="quiet">
         <span className="quiet-mark" aria-hidden>✓</span>
         <div>
-          <strong>No district reaches yellow{date ? ` on ${longDate(date)}` : ''}.</strong>
+          <strong>No district reaches yellow{date ? ` on ${titleDate(date, !(source === 'live'))}` : ''}.</strong>
           <p>All {all.length} districts are green: none has a 30% or higher chance of ≥ 64.5 mm.{top ? <> The highest {t.label.toLowerCase()}-rain chance is <b>{pct(top[t.key])}</b> in <button className="link" onClick={() => setSelected(top.district_id)}>{top.district}</button>.</> : null}</p>
           <button className="btn btn-secondary mt" onClick={() => setLevelFilter('all')}>Show all districts ranked by chance</button>
         </div>
@@ -81,7 +81,7 @@ export default function AlertsPage() {
       <header className="ws-head">
         <div>
           <span className="label">Heavy-rain alerts · IMD colour scheme</span>
-          <h1 className="ws-title">{date ? longDate(date) : loading ? 'Loading alerts…' : 'Alerts unavailable'}</h1>
+          <h1 className="ws-title">{date ? titleDate(date, !(source === 'live')) : loading ? 'Loading alerts…' : 'Alerts unavailable'}</h1>
         </div>
         <div className="ws-actions">
           <SourceControls />
@@ -100,7 +100,7 @@ export default function AlertsPage() {
               onClick={() => setLevelFilter(active ? 'yellow' : (l.key as LevelFilter))} title={l.key === 'green' ? undefined : `Show ${l.name.toLowerCase()} and above`}>
               <span className="level-bar" style={{ background: l.color }} />
               <span className="level-name">{l.name} · {l.label}</span>
-              <strong className="num">{ready ? n : '—'}</strong>
+              <strong className="num">{ready ? <CountUp value={n} /> : '—'}</strong>
               <span className="level-action">{l.action}</span>
             </button>
           );

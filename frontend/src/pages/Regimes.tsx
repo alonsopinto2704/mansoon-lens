@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import { m } from 'motion/react';
 import { useForecast, useVerification } from '../data';
 import { escapeHtml, fixed, gateReason, mm, pct, regimeBlurb, regimeColor, REGIMES, type Forecast } from '../lib';
+import { titleDate } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { IndiaMap } from '../components/IndiaMap';
 import { DayStrip, SourceControls } from '../components/Controls';
 import { ErrorState, GateChip, LoadingBlock, Reveal, Skeleton, ease } from '../components/ui';
 
-const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
 /** Row-normalised confusion matrix: each row is a true regime, cells show where its days were classified. */
 function Confusion({ matrix, regimes }: { matrix: number[][]; regimes: string[] }) {
@@ -67,7 +67,7 @@ export default function RegimesPage() {
       <header className="ws-head">
         <div>
           <span className="label">Weather regimes · {source === 'live' ? 'live NWP' : 'held-out season'}</span>
-          <h1 className="ws-title">{date ? longDate(date) : 'Weather regimes'}</h1>
+          <h1 className="ws-title">{date ? titleDate(date, !(source === 'live')) : 'Weather regimes'}</h1>
         </div>
         <SourceControls />
       </header>
