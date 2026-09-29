@@ -14,6 +14,15 @@ docker compose up --build
 
 Open [http://localhost:8000](http://localhost:8000). The image builds the web app, generates the sample and trains the models **at build time** (a few minutes), then serves web and API from one gunicorn process (about 1.5 GB RAM needed at build; on a small builder use `docker build --build-arg DISTRICTS=250 .`) on `$PORT` (default 8000). Any container host that sets `PORT` (Render, Railway, Fly.io, a VM) can run the root `Dockerfile` as-is. The live feed needs outbound HTTPS to `api.open-meteo.com`; the first page load after start takes about a minute while all 781 districts are fetched, then the run is cached for three hours.
 
+## Deploy on Vercel (live: https://monsoonlens.vercel.app)
+
+Vercel's Python functions can't hold LightGBM, SciPy, scikit-learn and pandas plus the SQLite file (about a 250 MB limit). The Vercel build therefore runs `backend/lite_app.py`: the same `/api/v1` API in Flask + numpy. It evaluates the exported LightGBM trees in `backend/lite.py` (parity with the real pipeline is tested) and reads the season from a compact `season.npz`. The live endpoint fetches Open-Meteo on request, and Vercel's CDN caches it for three hours. After training and `pnpm build`:
+
+```sh
+python -m backend.export_vercel      # writes deploy/vercel (about 26 MB)
+cd deploy/vercel && vercel deploy --prod
+```
+
 ## Local development
 
 Use Python 3.11+ and pnpm 9.15.9 (the lockfile version; Docker and CI pin it):

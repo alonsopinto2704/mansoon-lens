@@ -145,7 +145,7 @@ def create_app():
 
     @app.get("/api/v1/live")
     def live_forecast():
-        lead = Selection.model_validate({"lead": request.args.get("lead", 1)}).lead
+        lead = Selection.model_validate({"lead": request.args["lead"]}).lead if "lead" in request.args else None  # no lead: all five
         districts = pd.DataFrame(rows("SELECT * FROM districts"))
         state = live.load(districts, lambda df: predict(df, models(), report()["gate"]))
         cached = state.pop("cached")
@@ -153,7 +153,7 @@ def create_app():
             return jsonify({**state, "items": []}), 202 if state["status"] == "fetching" else 503
         names = districts.set_index("district_id")[["district", "state", "lat", "lon", "terrain_m", "coast_km"]].to_dict("index")
         drop = {"moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon", *(f"regime_{i}" for i in range(len(REGIMES)))}
-        items = [{k: v for k, v in explain({**names[r["district_id"]], **r, "observed_mm": None}).items() if k not in drop} for r in cached["rows"] if r["lead"] == lead and r["district_id"] in names]
+        items = [{k: v for k, v in explain({**names[r["district_id"]], **r, "observed_mm": None}).items() if k not in drop} for r in cached["rows"] if lead in (None, r["lead"]) and r["district_id"] in names]
         for item in items:
             item["value"] = item["served_mm"]
         dates = sorted({r["date"] for r in cached["rows"]})

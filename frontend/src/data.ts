@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { get, type District, type ForecastList, type Meta, type Verification } from './lib';
 import { useForecastStore } from './store';
@@ -7,12 +8,17 @@ export const useVerification = () => useQuery({ queryKey: ['verification'], quer
 
 export type LiveList = { items: District[]; total: number; lead: number; date: string | null; status: 'fetching' | 'ready' | 'error' | 'idle'; error: string | null; fetched_at?: string; dates?: string[]; source?: string };
 
-/** Live NWP run for the selected lead. Polls while the server is still fetching. */
+/** Live NWP run (all five lead days in one response, so a CDN caches one copy); selects the chosen lead. Polls while the server is still fetching. */
 export function useLive(enabled = true) {
   const lead = useForecastStore((s) => s.lead);
+  const select = useCallback((d: LiveList): LiveList => {
+    const items = d.items.filter((i) => (i as District & { lead: number }).lead === lead);
+    return { ...d, lead, items, total: items.length, date: d.dates?.[lead - 1] ?? null };
+  }, [lead]);
   return useQuery({
-    queryKey: ['live', lead],
-    queryFn: () => get<LiveList>(`/live?lead=${lead}`),
+    queryKey: ['live'],
+    queryFn: () => get<LiveList>('/live'),
+    select,
     enabled,
     refetchInterval: (q) => (q.state.data?.status === 'fetching' || q.state.data?.status === 'idle' ? 5000 : 10 * 60 * 1000),
   });
