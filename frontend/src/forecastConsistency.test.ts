@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toggleSaved } from './watchlist';
-import { alertsCsv, compareAlerts, observationColor, rainColor, type Forecast } from './lib';
+import { alertsCsv, compareAlerts, observationColor, rainColor, stateSummary, type Forecast } from './lib';
 import { readForecastView } from './forecastUrl';
 
 describe('forecast context and interpretation', () => {
@@ -36,5 +36,14 @@ describe('saved districts', () => {
     expect(toggleSaved(['a'], 'b')).toEqual(['b', 'a']);
     expect(toggleSaved(['b', 'a'], 'b')).toEqual(['a']);
     expect(toggleSaved(Array.from({ length: 8 }, (_, i) => `d${i}`), 'new')).toHaveLength(8);
+  });
+});
+
+describe('state summary', () => {
+  it('counts levels per state and ranks the most severe first', () => {
+    const row = (state: string, p: number) => ({ state, prob_64_5: p, prob_115_6: 0, prob_204_5: 0 }) as Forecast;
+    const summary = stateSummary([row('A', 0.35), row('A', 0), row('B', 0.65), row('C', 0)]);
+    expect(summary.map((s) => s.state)).toEqual(['B', 'A']);
+    expect(summary[1]).toEqual({ state: 'A', counts: [1, 1, 0, 0], total: 2 });
   });
 });

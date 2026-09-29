@@ -750,3 +750,10 @@ a.card:hover, button.card:hover, .regime-card:hover { box-shadow: none; }
   .btn { min-height: 44px; }
   .jump { padding: 20px 0; border-radius: 0; }
 }
+
+/* Alerts: per-state rollup */
+.state-card { margin-bottom: 16px; }
+.state-card .table-scroll { max-height: 340px; overflow-y: auto; }
+.state-card thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.state-table th[scope="row"] .link { font-weight: 600; text-align: left; }
+.state-table tr.is-active { background: var(--accent-soft); }

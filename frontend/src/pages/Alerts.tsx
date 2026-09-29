@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ChevronRight, Download, Search } from 'lucide-react';
 import { m } from 'motion/react';
 import { useForecast } from '../data';
-import { alertsCsv, compareAlerts, escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, titleDate, warningLevel, type District, type Forecast, type Level } from '../lib';
+import { alertsCsv, compareAlerts, stateSummary, escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, titleDate, warningLevel, type District, type Forecast, type Level } from '../lib';
 import { useForecastStore, useResolvedTheme } from '../store';
 import { DistrictDrawer } from '../components/DistrictDrawer';
 import { IndiaMap } from '../components/IndiaMap';
@@ -60,6 +60,7 @@ export default function AlertsPage() {
   // warningLevel per row, computed once per item for the table render and export.
   const levels = useMemo(() => new Map(all.map((i) => [i.district_id, warningLevel(i)])), [all]);
   const current = all.find((i) => i.district_id === selected);
+  const byState = useMemo(() => stateSummary(all), [all]);
   const liveError = !all.length && forecast.data && 'status' in forecast.data && forecast.data.status === 'error' ? new Error(forecast.data.error || 'The live forecast is unavailable. Try again or switch to Verified season.') : null;
   const loading = forecast.isPending || (!all.length && forecast.data && 'status' in forecast.data && (forecast.data.status === 'fetching' || forecast.data.status === 'idle'));
   const ready = Boolean(forecast.data) && !loading && !forecast.isError && !liveError;
@@ -147,6 +148,29 @@ export default function AlertsPage() {
           <p className="muted small">Derived from MonsoonLens heavy-rain probabilities using IMD’s green–yellow–orange–red scheme. Not an official warning: follow IMD district warnings.</p>
         </aside>
       </div>
+
+      {ready && byState.length > 0 && (
+        <div className="card table-card state-card">
+          <div className="table-head">
+            <h2>By state</h2>
+            <p className="muted small">{byState.length} state{byState.length === 1 ? '' : 's'} with a yellow or higher district. Select a state to list its districts.</p>
+          </div>
+          <div className="table-scroll">
+            <table className="table state-table">
+              <thead><tr><th>State</th>{[...LEVELS].reverse().slice(0, 3).map((l) => <th key={l.key} className="align-right"><i className="tip-dot" style={{ background: l.color }} />{l.name}</th>)}<th className="align-right">Districts</th></tr></thead>
+              <tbody>
+                {byState.map((s) => (
+                  <tr key={s.state} className={`row-link${state === s.state ? ' is-active' : ''}`} onClick={() => setState(state === s.state ? '' : s.state)}>
+                    <th scope="row"><button className="link" aria-pressed={state === s.state}>{s.state}</button></th>
+                    {[3, 2, 1].map((k) => <td key={k} className="align-right num">{s.counts[k] || <span className="muted">0</span>}</td>)}
+                    <td className="align-right num muted">{s.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card table-card">
         <div className="table-head table-head-tools">

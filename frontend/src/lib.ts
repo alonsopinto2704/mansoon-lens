@@ -163,3 +163,16 @@ export function warningLevel(i: { prob_64_5: number; prob_115_6: number; prob_20
   if (i.prob_64_5 >= 0.3) return LEVELS[1];
   return LEVELS[0];
 }
+
+/** Districts per warning level for each state with any yellow or higher, most severe states first. */
+export function stateSummary(rows: Forecast[]) {
+  const byState = new Map<string, number[]>();
+  for (const r of rows) {
+    const counts = byState.get(r.state) ?? [0, 0, 0, 0];
+    counts[LEVELS.indexOf(warningLevel(r))]++;
+    byState.set(r.state, counts);
+  }
+  return [...byState].map(([state, counts]) => ({ state, counts, total: counts.reduce((a, b) => a + b, 0) }))
+    .filter((s) => s.counts[1] + s.counts[2] + s.counts[3] > 0)
+    .sort((a, b) => b.counts[3] - a.counts[3] || b.counts[2] - a.counts[2] || b.counts[1] - a.counts[1] || a.state.localeCompare(b.state));
+}
