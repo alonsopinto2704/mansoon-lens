@@ -10,8 +10,8 @@ FROM python:3.12-slim
 WORKDIR /app
 # LightGBM needs the OpenMP runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-train.txt .
+RUN pip install --no-cache-dir -r requirements-train.txt
 COPY config ./config
 COPY backend ./backend
 # All 781 districts need ~1.5 GB RAM at build time; on a small builder pass e.g. --build-arg DISTRICTS=250.

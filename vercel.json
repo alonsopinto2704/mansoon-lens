@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo 'dependencies install in scripts/vercel-build.sh'",
+  "buildCommand": "bash scripts/vercel-build.sh",
+  "outputDirectory": "frontend/dist",
+  "regions": ["bom1"],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300,
+      "includeFiles": "backend/data/vercel/**",
+      "excludeFiles": "{frontend/**,docs/**,deploy/**,scripts/**,backend/tests/**,backend/pipeline/**,backend/adapters/**,backend/data/geo/**,backend/data/*.db,backend/data/*.parquet,backend/data/*.joblib}"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/v1/:path*", "destination": "/api/index" },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
+  ]
+}

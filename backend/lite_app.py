@@ -1,6 +1,6 @@
 """Serverless API (Vercel Python function): same /api/v1 contract as backend.app, numpy + Flask only.
 
-Reads the files written by `python -m backend.export_vercel`: season.npz (held-out season arrays),
+Reads the files written by `python -m backend.export_vercel` into backend/data/vercel: season.npz (held-out season arrays),
 districts.json, models.json (exported trees), verification.json and geo/*.geojson. Live NWP runs are
 fetched on request and cached by the CDN (one response holds all five leads).
 ponytail: mirrors backend.app by hand; tests/test_lite.py compares both on the same queries.
@@ -21,7 +21,7 @@ from flask import Flask, Response, jsonify, request, send_file
 
 from backend.lite import REGIMES, THRESHOLDS, predict
 
-DATA = Path(os.environ.get("MONSOONLENS_DATA", Path(__file__).resolve().parent / "data"))
+DATA = Path(os.environ.get("MONSOONLENS_DATA", Path(__file__).resolve().parent / "data" / "vercel"))
 FEATURES = ["raw_mm", "lead", "day", "moisture", "wind", "mslp", "terrain_m", "coast_km", "lat", "lon"]
 FIELDS = ["raw_mm", "served_mm", "corrected_p10", "corrected_p50", "corrected_p90", "truth_mm", "prob_64_5", "prob_115_6", "prob_204_5",
           "moisture", "wind", "mslp"] + [f"regime_{r}" for r in range(6)]

@@ -82,7 +82,6 @@ export default function Overview() {
 
   return (
     <div className="page overview">
-      <div className="overview-eyebrow"><span>MONSOON INTELLIGENCE</span><span>INDIA / SIH 2026</span></div>
       <section className="hero">
         <div className="hero-copy">
           <m.span className="pill" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>

@@ -3,7 +3,7 @@ PNPM ?= pnpm
 
 .PHONY: setup data train api web test demo
 setup:
-	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install -r requirements-train.txt
 	cd frontend && $(PNPM) install
 data:
 	$(PYTHON) -m backend.data.generate_synthetic

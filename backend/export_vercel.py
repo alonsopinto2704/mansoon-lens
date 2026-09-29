@@ -70,12 +70,10 @@ def build(target: Path) -> None:
     (target / "backend").mkdir(parents=True)
     for name in ("__init__.py", "lite.py", "lite_app.py"):
         shutil.copy(ROOT / "backend" / name, target / "backend" / name)
-    export_data(target / "backend" / "data")
+    export_data(target / "backend" / "data" / "vercel")
     (target / "api").mkdir()
-    (target / "api" / "index.py").write_text(
-        "import sys\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n\n"
-        "from backend.lite_app import app  # noqa: E402  (Vercel serves this WSGI app)\n")
-    (target / "requirements.txt").write_text("Flask>=3,<4\nnumpy>=2,<3\nreportlab>=4,<5\n")
+    shutil.copy(ROOT / "api" / "index.py", target / "api" / "index.py")
+    shutil.copy(ROOT / "requirements.txt", target / "requirements.txt")
     (target / "vercel.json").write_text(json.dumps(VERCEL_JSON, indent=2))
     (target / ".vercelignore").write_text("__pycache__\n")
     size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file()) / 2**20
@@ -83,4 +81,8 @@ def build(target: Path) -> None:
 
 
 if __name__ == "__main__":
-    build(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "deploy" / "vercel")
+    if "--data-only" in sys.argv:  # Git-triggered Vercel build (vercel.json, scripts/vercel-build.sh)
+        export_data(DATA / "vercel")
+        print(f"Function data written to {DATA / 'vercel'}")
+    else:
+        build(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "deploy" / "vercel")

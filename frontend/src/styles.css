@@ -194,7 +194,6 @@ select.input { padding-right: 32px; appearance: none; background-image: url("dat
 
 /* ---------- Overview ---------- */
 .overview { padding-top: 32px; }
-.overview-eyebrow { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 20px; margin-bottom: 40px; border-bottom: 1px solid var(--border); color: var(--text-3); font: 11px var(--mono); letter-spacing: .12em; }
 .hero-copy { min-width: 0; }
 .hero-disclosure { display: flex; align-items: center; gap: 8px; margin-top: 20px; font-size: 12px; color: var(--text-3); }
 .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 56px; align-items: center; }

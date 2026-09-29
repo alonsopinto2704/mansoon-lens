@@ -19,3 +19,8 @@ reports/
 backend/data/live.tmp
 .claude/
 deploy/
+.vercel/
+backend/data/vercel/
+
+.vercel
+.env*
