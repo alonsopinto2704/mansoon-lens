@@ -22,7 +22,7 @@ For each regime, the gate compares regime-aware to both baselines using paired w
 
 ## Real-data boundary
 
-The current adapters identify possible forecast (NCUM-G/NEPS), rainfall truth (IMD), and predictor (ERA5) interfaces. They do not fetch, preprocess, or validate those sources. Real deployment needs data rights, daily accumulation alignment to the IMD 08:30 IST rain day, spatial matching to official districts, QC provenance, a genuinely external test period, calibration and uncertainty review, and meteorological sign-off. The map draws real district polygons, but all season rainfall on it is generated.
+Real inputs would be NCUM-G/NEPS forecasts, IMD rainfall truth and ERA5 predictors; none is connected yet. Real deployment needs data rights, daily accumulation alignment to the IMD 08:30 IST rain day, spatial matching to official districts, QC provenance, a genuinely external test period, calibration and uncertainty review, and meteorological sign-off. The map draws real district polygons, but all season rainfall on it is generated.
 
 ## Live NWP feed
 

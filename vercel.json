@@ -9,7 +9,7 @@
     "api/index.py": {
       "maxDuration": 300,
       "includeFiles": "backend/data/vercel/**",
-      "excludeFiles": "{frontend/**,docs/**,deploy/**,scripts/**,backend/tests/**,backend/pipeline/**,backend/adapters/**,backend/data/geo/**,backend/data/*.db,backend/data/*.parquet,backend/data/*.joblib}"
+      "excludeFiles": "{frontend/**,docs/**,deploy/**,scripts/**,backend/tests/**,backend/pipeline/**,backend/data/geo/**,backend/data/*.db,backend/data/*.parquet,backend/data/*.joblib}"
     }
   },
   "rewrites": [

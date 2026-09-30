@@ -6,4 +6,4 @@ This demo currently reads only its own generated data. The following are the int
 - IMD 0.25° gridded daily rainfall and an IMD–NCMRWF merged product for observation; GPM IMERG could provide an independent satellite comparison.
 - ERA5 reanalysis, INSAT products, and terrain and coast data for predictors.
 
-The placeholder adapters in `backend/adapters/` are the integration boundary. Any replacement must document provenance, permitted use, units, accumulation windows, spatial resampling, QC, and a fresh out-of-time verification campaign before performance is stated. These names are project design references, not endorsements or claims of current connectivity.
+Real data sources are not yet connected. Any integration must document provenance, permitted use, units, accumulation windows, spatial resampling, QC, and a fresh out-of-time verification campaign before performance is stated. These names are project design references, not endorsements or claims of current connectivity.
