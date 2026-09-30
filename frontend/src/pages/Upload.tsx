@@ -37,7 +37,7 @@ export default function UploadPage() {
 
   async function submit() {
     if (!file || busy) return;
-    setBusy(true); setError(null); setResults([]);
+    setBusy(true); setError(null); setResults([]); setRan(false);
     const body = new FormData();
     body.append('file', file);
     try {
@@ -54,7 +54,7 @@ export default function UploadPage() {
       <PageHeader title="Run your own forecast rows" description="Upload a CSV of raw forecasts and predictors; each row comes back with its regime, corrected range, served value, heavy-rain chance and gate decision." />
 
       <div className="upload-layout">
-        <div className="card pad">
+        <div className="card pad" aria-busy={busy}>
           <div className={`dropzone ${drag ? 'is-drag' : ''} ${file ? 'has-file' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
             <input ref={input} id="forecast-csv" className="sr-only" type="file" tabIndex={-1} aria-label="Forecast CSV file" aria-describedby="csv-hint" disabled={busy} accept=".csv,text/csv" onChange={(e) => choose(e.target.files?.[0])} />
@@ -75,7 +75,7 @@ export default function UploadPage() {
           <button type="button" className="btn btn-primary btn-block" disabled={!file || busy} onClick={submit}>
             {busy ? <><span className="spinner" aria-hidden /> Processing…</> : <>Run correction</>}
           </button>
-          <p className="muted small mt" role="status">{busy ? 'Processing your file…' : !file && !error ? 'No file chosen yet.' : ''}</p>
+          <p className="muted small mt" role="status">{busy ? 'Processing your file…' : ran ? `${results.length} row${results.length === 1 ? '' : 's'} processed.` : !file && !error ? 'No file chosen yet.' : ''}</p>
           {error && <div className="mt" role="alert"><ErrorState error={error} /></div>}
         </div>
 

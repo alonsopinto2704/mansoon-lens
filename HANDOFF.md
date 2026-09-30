@@ -2,7 +2,18 @@
 
 Public GitHub repository: [alonsopinto2704/mansoon-lens](https://github.com/alonsopinto2704/mansoon-lens). Local `main` tracks `origin/main`.
 
-Updated: 2026-09-29. Update this file after material code, data, test, or deployment changes so a new agent can continue from the actual state.
+Updated: 2026-09-30. Update this file after material code, data, test, or deployment changes so a new agent can continue from the actual state.
+
+## UI and bug check (2026-09-30)
+
+- Overview/forecast layout revised; Verification now includes metric-ranked model bars, regime RMSE changes and event outcome bars. Lead plots compare raw with delivered, reliability tooltips include bin counts, and performance markers support keyboard access.
+- Fixed homepage loading forever when the live endpoint returns an error status with no rows; four render regression tests cover loading, API failure, transport failure and usable cached data.
+- Added the missing mobile Alerts map selector. Upload reruns clear the previous success state and announce processing/results.
+- Navigation preloads route chunks on hover/focus and renders new routes without waiting for outgoing fades. Escape closes the mobile menu and returns focus. Chart ranking changes animate with Motion; reduced-motion preferences remain respected. Mobile segmented controls have 44px targets.
+- Forecast search uses deferred filtering and stable map callbacks. Map restyling runs on forecast, layer, theme and selection changes rather than every search keystroke; district fill changes avoid animating hundreds of SVG paths at once.
+- Verified: 65 backend tests, 18 frontend tests, production TypeScript/Vite build, and clean diff whitespace check. Jam searches returned no matching reports. Browser verification during this pass was blocked by the browser URL security policy; final pointer/visual checks remain unverified.
+- The user cancelled recurring checks; the hourly automation was deleted. Local preview restarted on loopback port 5000.
+- Pre-deploy pass: dark-theme accent tokens changed from blue to teal to match the light theme. `index.html` preloads `/api/v1/live?cached=1` and (except on /method and /upload) both geo layers, so they download alongside the app bundle rather than after the page and map chunks (geo began at ~5.4 s on production; now ~0.4 s locally). `lite_app` geo responses cache for a day. Browser-checked all seven pages locally: no console errors, all API calls 200, 817 map paths drawn. Production live feed was `ready`, 4 min old. Local live refresh fails with WinError 10013 (the sandboxed host blocks outbound sockets), not a code fault. Pushed to `main` for Vercel deployment.
 
 ## Goal and fixed requirements
 

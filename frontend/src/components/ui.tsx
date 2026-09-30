@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { m, useReducedMotion } from 'motion/react';
+import type { ReactNode } from 'react';
+import { m } from 'motion/react';
 import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 import type { Level } from '../lib';
 
@@ -33,32 +33,14 @@ export function Section({ title, description, action, children }: { title: strin
   );
 }
 
-/** Plain wrapper kept for API compatibility: content renders immediately, with no entrance animation. */
-export function Reveal({ children, className, as: Tag = 'div' }: { children: ReactNode; delay?: number; className?: string; as?: 'div' | 'section' | 'li' | 'article' }) {
+/** Content renders immediately, with no entrance animation. */
+export function Reveal({ children, className, as: Tag = 'div' }: { children: ReactNode; className?: string; as?: 'div' | 'section' | 'li' | 'article' }) {
   return <Tag className={className}>{children}</Tag>;
 }
 
-/** Shows the real value immediately and tweens when it changes (never renders a placeholder number). */
-export function CountUp({ value, format = (n) => Math.round(n).toLocaleString('en-IN'), duration = 600 }: { value: number; format?: (n: number) => string; duration?: number }) {
-  const reduced = useReducedMotion();
-  const [shown, setShown] = useState(value);
-  const from = useRef(value);
-  useEffect(() => {
-    const start = from.current;
-    from.current = value;
-    if (reduced || start === value) { setShown(value); return; }
-    let frame = 0;
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - t0) / duration);
-      setShown(start + (value - start) * (1 - Math.pow(1 - t, 3)));
-      if (t < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    const done = window.setTimeout(() => setShown(value), duration + 100); // rAF pauses in background tabs
-    return () => { cancelAnimationFrame(frame); window.clearTimeout(done); };
-  }, [value, duration, reduced]);
-  return <span className="num">{format(shown)}</span>;
+/** Keep changing forecast values exact and immediately readable. */
+export function CountUp({ value, format = (n) => Math.round(n).toLocaleString('en-IN') }: { value: number; format?: (n: number) => string }) {
+  return <span className="num">{format(value)}</span>;
 }
 
 export function Segmented<T extends string | number>({ id, value, options, onChange, label }: { id: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {

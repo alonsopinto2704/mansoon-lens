@@ -52,13 +52,22 @@ class PageBoundary extends Component<{ children: ReactNode }, { error: Error | n
   }
 }
 
-const Overview = lazy(() => import('./pages/Overview'));
-const ForecastPage = lazy(() => import('./pages/Forecast'));
-const AlertsPage = lazy(() => import('./pages/Alerts'));
-const RegimesPage = lazy(() => import('./pages/Regimes'));
-const VerificationPage = lazy(() => import('./pages/Verification'));
-const MethodPage = lazy(() => import('./pages/Method'));
-const UploadPage = lazy(() => import('./pages/Upload'));
+const pageLoaders = {
+  '/': () => import('./pages/Overview'),
+  '/forecast': () => import('./pages/Forecast'),
+  '/alerts': () => import('./pages/Alerts'),
+  '/regimes': () => import('./pages/Regimes'),
+  '/verification': () => import('./pages/Verification'),
+  '/method': () => import('./pages/Method'),
+  '/upload': () => import('./pages/Upload'),
+};
+const Overview = lazy(pageLoaders['/']);
+const ForecastPage = lazy(pageLoaders['/forecast']);
+const AlertsPage = lazy(pageLoaders['/alerts']);
+const RegimesPage = lazy(pageLoaders['/regimes']);
+const VerificationPage = lazy(pageLoaders['/verification']);
+const MethodPage = lazy(pageLoaders['/method']);
+const UploadPage = lazy(pageLoaders['/upload']);
 
 const nav = [
   { to: '/', label: 'Overview' },
@@ -68,15 +77,15 @@ const nav = [
   { to: '/verification', label: 'Verification' },
   { to: '/method', label: 'How it works' },
   { to: '/upload', label: 'Upload' },
-];
+] as const;
 
 function Logo() {
   return (
     <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden className="logo">
       <rect width="32" height="32" rx="10" fill="var(--text)" />
       <path d="M9.5 16.5a6.5 6.5 0 1 1 13 0" fill="none" stroke="var(--bg)" strokeWidth="2.2" strokeLinecap="round" />
-      <circle cx="16" cy="16.5" r="2.6" fill="#5598e7" />
-      <path d="M11 22.5l-1 2.5M16 23l-1 2.5M21 22.5l-1 2.5" stroke="#5598e7" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="16" cy="16.5" r="2.6" fill="var(--accent)" />
+      <path d="M11 22.5l-1 2.5M16 23l-1 2.5M21 22.5l-1 2.5" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -118,7 +127,8 @@ function NavLinks({ onNavigate, mobile = false }: { onNavigate?: () => void; mob
   return (
     <>
       {nav.map(({ to, label }) => (
-        <NavLink key={to} to={to} end={to === '/'} onClick={onNavigate} className="nav-link">
+        <NavLink key={to} to={to} end={to === '/'} onClick={onNavigate} className="nav-link"
+          onPointerEnter={() => { void pageLoaders[to]().catch(() => {}); }} onFocus={() => { void pageLoaders[to]().catch(() => {}); }}>
           {({ isActive }) => (
             <>
               {isActive && <m.span layoutId={mobile ? 'nav-pill-m' : 'nav-pill'} className="nav-pill" transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
@@ -134,6 +144,7 @@ function NavLinks({ onNavigate, mobile = false }: { onNavigate?: () => void; mob
 export default function App() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   useResolvedTheme();
   const meta = useMeta();
   const { date, setDate } = useForecastStore();
@@ -144,6 +155,14 @@ export default function App() {
     if (dates?.length && !dates.includes(date)) setDate(dates[dates.length - 1]);
   }, [meta.data, date, setDate]);
   useEffect(() => { setMenuOpen(false); window.scrollTo({ top: 0 }); }, [location.pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [menuOpen]);
   useEffect(() => {
     const label = nav.find((n) => n.to === location.pathname)?.label;
     document.title = label && label !== 'Overview' ? `${label} · MonsoonLens` : 'MonsoonLens · District rainfall forecasts';
@@ -160,7 +179,7 @@ export default function App() {
           <div className="topbar-actions">
             <LiveStatus />
             <ThemeToggle />
-            <button className="icon-btn menu-btn" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-controls="mobile-nav" aria-label={menuOpen ? 'Close menu' : 'Open menu'}>
+            <button ref={menuButton} className="icon-btn menu-btn" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-controls="mobile-nav" aria-label={menuOpen ? 'Close menu' : 'Open menu'}>
               {menuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
@@ -175,8 +194,7 @@ export default function App() {
       </header>
 
       <main id="main" className="main">
-        <AnimatePresence mode="wait" initial={false}>
-          <m.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.22, ease }}>
+          <m.div key={location.pathname} initial={{ opacity: 0.75 }} animate={{ opacity: 1 }} transition={{ duration: 0.16, ease }}>
             <PageBoundary>
             <Suspense fallback={<div className="page"><LoadingBlock rows={6} /></div>}>
               <Routes location={location}>
@@ -193,7 +211,6 @@ export default function App() {
             </Suspense>
             </PageBoundary>
           </m.div>
-        </AnimatePresence>
       </main>
 
       <footer className="footer">

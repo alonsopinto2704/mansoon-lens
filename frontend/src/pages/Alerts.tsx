@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronRight, Download, Search } from 'lucide-react';
-import { m } from 'motion/react';
 import { useForecast, useLiveRun } from '../data';
 import { alertsCsv, compareAlerts, stateSummary, escapeHtml, levelFill, LEVELS, mm, pct, probColor, probLabels, probLegend, regimeColor, titleDate, warningLevel, worstDay, type District, type Forecast, type Level } from '../lib';
 import { useForecastStore, useResolvedTheme, withForecastView } from '../store';
@@ -133,6 +132,10 @@ export default function AlertsPage() {
                 tooltip={(i) => { const l = warningLevel(i); return `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Level</span><b><i class="tip-dot" style="background:${l.color}"></i>${l.name} · ${l.action}</b><span>${t.label} rain chance</span><b>${pct(i[t.key])}</b><span>Served</span><b>${mm(i.served_mm)}</b>${worst ? `<span>Day</span><b>${dayLabel(dayOf(i))}</b>` : ''}</div>`; }} />
               <div className="map-layers">
                 <Segmented id="alert-map" label="Map shows" value={mapMode} onChange={setMapMode} options={[{ value: 'level', label: 'Warning level' }, { value: 'chance', label: `Chance ≥ ${threshold} mm` }]} />
+                <select className="input map-layer-select" aria-label="Map shows" value={mapMode} onChange={(e) => setMapMode(e.target.value as 'level' | 'chance')}>
+                  <option value="level">Warning level</option>
+                  <option value="chance">Chance ≥ {threshold} mm</option>
+                </select>
               </div>
               <div className="map-legend">
                 {mapMode === 'level' ? (
@@ -208,11 +211,10 @@ export default function AlertsPage() {
             <table className="table">
               <thead><tr><th>Level</th><th>District</th>{worst && <th>Day</th>}<th>Chance ≥ {threshold} mm</th><th className="align-right">Served</th><th>Regime</th><th>Correction</th><th><span className="sr-only">Details</span></th></tr></thead>
               <tbody>
-                {items.slice(0, 300).map((i, n) => {
+                {items.slice(0, 300).map((i) => {
                   const l = levels.get(i.district_id) ?? warningLevel(i);
                   return (
-                    <m.tr key={i.district_id} className="row-link" onClick={() => setSelected(i.district_id)}
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25, delay: Math.min(n, 12) * 0.02 }}>
+                    <tr key={i.district_id} className="row-link" onClick={() => setSelected(i.district_id)}>
                       <td><LevelChip level={l} /></td>
                       <td><strong>{i.district}</strong><small className="muted block">{i.state}</small></td>
                       {worst && <td className="num">{dayLabel(dayOf(i))}</td>}
@@ -221,7 +223,7 @@ export default function AlertsPage() {
                       <td><span className="regime-tag"><i style={{ background: regimeColor(i.dominant_regime, theme) }} />{i.dominant_regime}</span></td>
                       <td><GateChip status={i.gate_status} /></td>
                       <td className="align-right"><button className="icon-btn" aria-label={`Details for ${i.district}`} onClick={(e) => { e.stopPropagation(); setSelected(i.district_id); }}><ChevronRight size={16} /></button></td>
-                    </m.tr>
+                    </tr>
                   );
                 })}
               </tbody>

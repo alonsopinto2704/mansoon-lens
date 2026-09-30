@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
+import { ArrowRight, Search, X } from 'lucide-react';
 import { useLive, useLiveRun, useVerification } from '../data';
 import { useSaved } from '../watchlist';
 import { escapeHtml, levelFill, LEVELS, mm, pct, warningLevel, type Forecast } from '../lib';
@@ -53,8 +53,11 @@ function SavedDistricts() {
 /** Live map of today's colour-coded risk, with the numbers a duty officer would ask for first. */
 function LiveHero() {
   const live = useLive(true);
+  const navigate = useNavigate();
   const theme = useResolvedTheme();
   const items: Forecast[] = useMemo(() => live.data?.items ?? [], [live.data]);
+  const error = live.isError ? live.error : live.data?.status === 'error' && !items.length
+    ? new Error(live.data.error || 'The live forecast is unavailable. Please try again.') : null;
   const counts = LEVELS.map((l) => items.filter((i) => warningLevel(i).key === l.key).length);
   const wettest = items.reduce<Forecast | null>((w, i) => (!w || i.served_mm > w.served_mm ? i : w), null);
   const tooltip = (i: Forecast) => `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>Served</span><b>${mm(i.served_mm)}</b><span>Heavy-rain chance</span><b>${pct(i.prob_64_5)}</b><span>Level</span><b>${warningLevel(i).name}</b></div>`;
@@ -69,9 +72,10 @@ function LiveHero() {
         </div>
       </div>
       <div className="hero-map-body">
-        {live.isError && !items.length ? <div className="pad"><ErrorState error={live.error} /></div>
+        {error && !items.length ? <div className="pad"><ErrorState error={error} onRetry={() => { void live.refetch(); }} /></div>
           : !items.length ? <Skeleton height="100%" className="map-skeleton" />
-          : <IndiaMap compact items={items} color={(i) => levelFill(warningLevel(i), theme)} tooltip={tooltip} />}
+          : <IndiaMap compact items={items} color={(i) => levelFill(warningLevel(i), theme)} tooltip={tooltip}
+              onSelect={(id) => navigate(`/forecast?source=live&district=${encodeURIComponent(id)}`)} />}
       </div>
       <div className="hero-map-foot">
         <ul className="level-counts" aria-label="Districts by warning level">
@@ -105,8 +109,8 @@ function Evidence() {
         <p className="evidence-context muted">2025 synthetic test season. The delivered forecast, including raw fallbacks, compared with raw rainfall and a global correction. These are retrospective synthetic results: the gate was chosen on the same season. They do not measure live forecast skill.</p>
       </Reveal>
       <div className="evidence-grid">
-        {!v ? Array.from({ length: 3 }, (_, i) => <div key={i} className="figure"><Skeleton height={90} /></div>) : figures.map((f, i) => (
-          <Reveal key={f.label} delay={i * 0.06} className="figure">
+        {!v ? Array.from({ length: 3 }, (_, i) => <div key={i} className="figure"><Skeleton height={90} /></div>) : figures.map((f) => (
+          <Reveal key={f.label} className="figure">
             <span className="figure-label">{f.label}</span>
             <strong className="figure-value num">{f.value}</strong>
             <span className="figure-delta">{f.delta}</span>
@@ -114,7 +118,7 @@ function Evidence() {
           </Reveal>
         ))}
         {v && (
-          <Reveal delay={0.18} className="figure figure-gate">
+          <Reveal className="figure figure-gate">
             <span className="figure-label">Regimes passing the demo gate</span>
             <strong className="figure-value num">{passed.length}<span> of {v.regimes.length}</span></strong>
             <span className="figure-note">regimes passed the verification gate</span>
@@ -132,30 +136,41 @@ function Evidence() {
 function DistrictJump() {
   const live = useLive(true);
   const navigate = useNavigate();
-  const setSource = useForecastStore((s) => s.setSource);
   const [q, setQ] = useState('');
+  const [searchError, setSearchError] = useState('');
   const names = useMemo(() => (live.data?.items ?? []).map((i) => ({ id: i.district_id, label: `${i.district}, ${i.state}` })), [live.data]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const text = q.trim().toLowerCase();
-    const hit = names.find((n) => n.label.toLowerCase() === text) ?? names.find((n) => n.label.toLowerCase().startsWith(text)) ?? names.find((n) => n.label.toLowerCase().includes(text));
-    setSource('live');
-    navigate(hit ? `/forecast?district=${hit.id}` : '/forecast');
+    if (!text) { navigate('/forecast?source=live'); return; }
+    if (!names.length) {
+      setSearchError(live.isPending ? 'District list is loading. Try again shortly.' : 'District list is unavailable. Open the forecast map to try again.');
+      return;
+    }
+    const matches = names.filter((n) => n.label.toLowerCase().includes(text));
+    const hit = matches.find((n) => n.label.toLowerCase() === text) ?? (matches.length === 1 ? matches[0] : undefined);
+    if (!hit) {
+      setSearchError(matches.length ? 'Several districts match. Choose a full name from the suggestions.' : 'No matching district. Check the name and try again.');
+      return;
+    }
+    setSearchError('');
+    navigate(`/forecast?source=live&district=${encodeURIComponent(hit.id)}`);
   };
   return (
     <Reveal as="section" className="jump">
       <div>
-        <h2>Find your district</h2>
-        <p>Compare rainfall estimates and heavy-rain chances for the next five days.</p>
+        <h2>Find a district</h2>
+        <p>Search the five-day outlook by name or state.</p>
       </div>
       <form className="jump-form" onSubmit={submit} role="search">
         <label className="input input-icon jump-input">
           <Search size={17} aria-hidden />
-          <input list="district-names" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type a district, e.g. Pune" aria-label="District name" />
+          <input list="district-names" value={q} onChange={(e) => { setQ(e.target.value); setSearchError(''); }} placeholder="Type a district, e.g. Pune" aria-label="District name" aria-invalid={Boolean(searchError)} aria-describedby={searchError ? 'district-search-error' : undefined} />
         </label>
         <datalist id="district-names">{names.map((n) => <option key={n.id} value={n.label} />)}</datalist>
         <button className="btn btn-light" type="submit">Show forecast</button>
       </form>
+      {searchError && <p id="district-search-error" className="search-error" role="alert">{searchError}</p>}
     </Reveal>
   );
 }
@@ -166,10 +181,12 @@ export default function Overview() {
     <div className="page overview">
       <section className="hero">
         <div className="hero-copy">
-          <h1>District rainfall outlook</h1>
-          <p className="lead">Five-day rainfall and heavy-rain chance for 781 districts, using six weather regimes.</p>
-          <Link className="btn btn-primary" to="/forecast" onClick={() => setSource('live')}>Open forecast map</Link>
+          <span className="hero-kicker">India / district outlook</span>
+          <h1>Rainfall, district by district.</h1>
+          <p className="lead">A five-day view of rainfall and heavy-rain chances across 781 districts.</p>
+          <Link className="btn btn-primary" to="/forecast" onClick={() => setSource('live')}>Explore the forecast <ArrowRight size={16} aria-hidden /></Link>
         </div>
+        <DistrictJump />
         <p className="hero-note">Research prototype · Live NWP input, correction trained on synthetic data. Not an official forecast; for warnings, follow IMD.</p>
         <LiveHero />
       </section>
@@ -188,7 +205,6 @@ export default function Overview() {
         <p className="muted small">Details on the <Link to="/method" className="link">method page</Link>.</p>
       </section>
 
-      <DistrictJump />
     </div>
   );
 }

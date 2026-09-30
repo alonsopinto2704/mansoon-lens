@@ -175,7 +175,8 @@ def create_app():
     def geo(name):
         if name not in {"districts", "states"}:
             return error("Unknown boundary layer", "not_found", ["districts", "states"], 404)
-        return Response((DATA / "geo" / f"{name}.geojson").read_text(encoding="utf-8"), mimetype="application/geo+json")
+        return Response((DATA / "geo" / f"{name}.geojson").read_text(encoding="utf-8"), mimetype="application/geo+json",
+                        headers={"Cache-Control": "public, max-age=86400, s-maxage=86400"})  # boundaries only change on redeploy
 
     @app.get("/api/v1/meta")
     def meta():

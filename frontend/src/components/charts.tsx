@@ -11,14 +11,15 @@ export function chartTheme(theme: Theme) {
   };
 }
 
-type TooltipProps = { active?: boolean; label?: string | number; payload?: { name: string; value: number; color: string }[]; format?: (v: number) => string; labelFormat?: (l: string | number) => string };
+type TooltipProps = { active?: boolean; label?: string | number; payload?: { name: string; value: number; color: string; payload?: { count?: number } }[]; format?: (v: number) => string; labelFormat?: (l: string | number) => string; showCount?: boolean };
 
-export function ChartTooltip({ active, label, payload, format = (v) => v.toFixed(3), labelFormat = (l) => String(l) }: TooltipProps) {
+export function ChartTooltip({ active, label, payload, format = (v) => v.toFixed(3), labelFormat = (l) => String(l), showCount = false }: TooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="chart-tip">
       <strong>{labelFormat(label ?? '')}</strong>
       {payload.map((p) => <div key={p.name}><i style={{ background: p.color }} />{p.name}<b className="num">{format(p.value)}</b></div>)}
+      {showCount && payload[0]?.payload?.count !== undefined && <small className="muted num">{payload[0].payload.count.toLocaleString('en-IN')} forecasts in this bin</small>}
     </div>
   );
 }

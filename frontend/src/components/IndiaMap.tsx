@@ -69,7 +69,7 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
       path.setTooltipContent(item ? tooltip(item) : `<strong>${escapeHtml(name ?? 'District')}</strong><br/>No matching forecast`);
       if (selected === id) path.bringToFront();
     });
-  });
+  }, [byId, color, tooltip, selected, districts.data, states.data, live]);
 
   if (districts.isError || states.isError) return <div className="pad"><ErrorState error={districts.error ?? states.error} onRetry={() => { void districts.refetch(); void states.refetch(); }} /></div>;
   if (!districts.data || !states.data) return <Skeleton height={height} className="map-skeleton" />;
@@ -87,7 +87,7 @@ export function IndiaMap<T extends { district_id: string }>({ items, color, tool
   };
 
   return (
-    <div role="group" aria-label="Map of India districts. Use the district list to select a district with the keyboard." style={{ height }}>
+    <div role="group" aria-label={compact ? 'Map of India districts. Use the district search to open details with the keyboard.' : 'Map of India districts. Use the district list to select a district with the keyboard.'} style={{ height }}>
     <MapContainer bounds={INDIA} maxBounds={[[0, 58], [42, 108]]} minZoom={4} maxZoom={10} zoomSnap={0.25} scrollWheelZoom={false}
       attributionControl={false} zoomControl={false} className="leaflet-map" style={{ height }} renderer={L.svg({ padding: 0.5 })}>
       <FitIndia compact={compact} />

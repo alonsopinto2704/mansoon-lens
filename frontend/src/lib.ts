@@ -156,7 +156,7 @@ export const LEVELS = [
 export type Level = (typeof LEVELS)[number];
 /** Map fill: "no warning" recedes to a soft tint so the alert colours carry the map. */
 export function levelFill(level: Level, theme: Theme = 'light') {
-  return level.key === 'green' ? (theme === 'dark' ? '#1f3a2a' : '#d9ecdc') : level.color;
+  return level.key === 'green' ? (theme === 'dark' ? '#2b513b' : '#bfdac6') : level.color;
 }
 export function warningLevel(i: { prob_64_5: number; prob_115_6: number; prob_204_5: number }): Level {
   if (i.prob_115_6 >= 0.5 || i.prob_204_5 >= 0.3) return LEVELS[3];

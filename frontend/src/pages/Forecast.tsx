@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useForecast } from '../data';
@@ -70,6 +70,7 @@ export default function ForecastPage() {
     setParams(withForecastView(next), { replace: true });
   };
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   // [ / ] step the live lead day; ignored while typing or with modifiers.
   useEffect(() => {
     if (source !== 'live') return;
@@ -87,10 +88,10 @@ export default function ForecastPage() {
   const error = forecast.isError ? forecast.error : liveStatus === 'error' && !items.length ? new Error(('error' in forecast.data! && forecast.data.error) || 'The live forecast is unavailable.') : null;
   const L = layers[layer];
   const list = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     const rows = q ? items.filter((i) => `${i.district} ${i.state}`.toLowerCase().includes(q)) : items;
     return [...rows].sort((a, b) => layer === 'observed' && (a.observed_mm === null || b.observed_mm === null) ? Number(a.observed_mm === null) - Number(b.observed_mm === null) : Math.abs(L.value(b)) - Math.abs(L.value(a)));
-  }, [items, search, L, layer]);
+  }, [items, deferredSearch, L, layer]);
   const current = items.find((i) => i.district_id === selected);
   const stats = useMemo(() => ({
     heavy: items.filter((i) => i.served_mm >= 64.5).length,
@@ -99,11 +100,11 @@ export default function ForecastPage() {
     corrected: items.filter((i) => i.gate_status === 'Corrected').length,
     wettest: items.reduce<Forecast | null>((w, i) => (!w || i.served_mm > w.served_mm ? i : w), null),
   }), [items]);
-  const color = (i: Forecast) => L.color(i, theme);
-  const tooltip = (i: Forecast) => {
+  const color = useCallback((i: Forecast) => L.color(i, theme), [L, theme]);
+  const tooltip = useCallback((i: Forecast) => {
     const level = warningLevel(i);
     return `<strong>${escapeHtml(i.district)}</strong> · ${escapeHtml(i.state)}<div class="tip-grid"><span>${escapeHtml(L.legend)}</span><b>${escapeHtml(L.text(i))}</b><span>Served</span><b>${mm(i.served_mm)}</b><span>Raw NWP</span><b>${mm(i.raw_mm)}</b><span>Heavy-rain chance</span><b>${pct(i.prob_64_5)}</b><span>Warning level</span><b><i class="tip-dot" style="background:${level.color}"></i>${level.name}</b><span>Regime</span><b>${escapeHtml(i.dominant_regime)}</b></div>`;
-  };
+  }, [L]);
 
   return (
     <div className="page page-wide">
@@ -133,6 +134,9 @@ export default function ForecastPage() {
               <IndiaMap items={items} color={color} tooltip={tooltip} selected={selected} onSelect={setSelected} />
               <div className="map-layers">
                 <Segmented id="layer" label="Map layer" value={layer} onChange={setLayer} options={shownLayers.map((value) => ({ value, label: layers[value].label }))} />
+                <select className="input map-layer-select" aria-label="Map layer" value={layer} onChange={(e) => setLayer(e.target.value as Layer)}>
+                  {shownLayers.map((value) => <option key={value} value={value}>{layers[value].label}</option>)}
+                </select>
               </div>
               <Legend layer={layer} />
             </div>

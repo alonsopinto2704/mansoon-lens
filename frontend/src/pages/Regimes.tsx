@@ -109,13 +109,13 @@ export default function RegimesPage() {
               </div>
             </Reveal>
             <div className="regime-grid">
-              {v.regimes.map((name, i) => {
+              {v.regimes.map((name) => {
                 const metric = v.classifier.per_regime.find((r) => r.regime === name);
                 const gate = v.gate[name];
                 const raw = v.scores[name]?.Raw?.['64.5'];
                 const ours = v.scores[name]?.['Regime-aware']?.['64.5'];
                 return (
-                  <Reveal key={name} delay={i * 0.05} className="regime-card card">
+                  <Reveal key={name} className="regime-card card">
                     <div className="regime-top">
                       <span className="regime-swatch" style={{ background: regimeColor(name, theme) }} />
                       <h3>{name}</h3>

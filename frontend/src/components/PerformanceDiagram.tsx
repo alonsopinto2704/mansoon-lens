@@ -6,8 +6,8 @@ type Series = { key: string; label: string; color: string; points: { threshold: 
 const W = 420, H = 400, L = 48, R = 16, T = 16, B = 46;
 const x = (sr: number) => L + sr * (W - L - R);
 const y = (pod: number) => H - B - pod * (H - T - B);
-const CSI = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
-const BIAS = [0.3, 0.5, 0.8, 1, 1.3, 2, 3];
+const CSI = [0.2, 0.4, 0.6, 0.8];
+const BIAS = [0.5, 1, 2];
 
 /** CSI contour: POD = 1 / (1/csi + 1 - 1/SR), defined for SR ≥ csi. */
 function contour(c: number) {
@@ -28,7 +28,7 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
   const [hover, setHover] = useState<{ label: string; threshold: string; s: Score } | null>(null);
   return (
     <div className="perf">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Performance diagram: success ratio against probability of detection for each model and threshold">
+      <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label="Performance diagram: success ratio against probability of detection for each model and threshold">
         {CSI.map((c) => (
           <g key={c}>
             <polyline points={contour(c)} fill="none" stroke={grid} strokeWidth={1} />
@@ -63,10 +63,14 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
                 const on = p.threshold === active;
                 const cx = x(1 - (p.score.far ?? 0)), cy = y(p.score.pod ?? 0);
                 return (
-                  <g key={p.threshold} onMouseEnter={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} onMouseLeave={() => setHover(null)} onClick={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} style={{ cursor: 'default' }}>
+                  <g key={p.threshold} tabIndex={0} role="button" aria-label={`${sr.label}, at least ${p.threshold} millimetres, CSI ${(p.score.csi ?? 0).toFixed(3)}`}
+                    onMouseEnter={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} onMouseLeave={() => setHover(null)}
+                    onFocus={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })} onBlur={() => setHover(null)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setHover({ label: sr.label, threshold: p.threshold, s: p.score }); } }}
+                    onClick={() => setHover({ label: sr.label, threshold: p.threshold, s: p.score })}>
                     <circle cx={cx} cy={cy} r={12} fill="transparent" />
                     <circle cx={cx} cy={cy} r={on ? 6.5 : 4.5} fill={sr.color} stroke="var(--surface)" strokeWidth={2} opacity={on ? 1 : 0.75} />
-                    {sr.key === 'Delivered' && <text x={cx + 9} y={cy - 7} fontSize="11" fontWeight={600} fill={text}>{p.threshold}</text>}
+                    {sr.key === 'Delivered' && on && <text x={cx + 9} y={cy - 7} fontSize="11" fontWeight={600} fill={text}>{p.threshold}</text>}
                     <title>{`${sr.label} · ≥ ${p.threshold} mm — POD ${(p.score.pod ?? 0).toFixed(3)}, success ratio ${(1 - (p.score.far ?? 0)).toFixed(3)}, CSI ${(p.score.csi ?? 0).toFixed(3)}`}</title>
                   </g>
                 );
@@ -77,7 +81,7 @@ export function PerformanceDiagram({ series, active, grid, axis, text }: { serie
       </svg>
       <p className="perf-readout" aria-live="polite">
         {hover ? <><b>{hover.label}</b> at ≥ {hover.threshold} mm · POD <b className="num">{(hover.s.pod ?? 0).toFixed(2)}</b> · FAR <b className="num">{(hover.s.far ?? 0).toFixed(2)}</b> · CSI <b className="num">{(hover.s.csi ?? 0).toFixed(2)}</b> · bias <b className="num">{((hover.s.pod ?? 0) / (1 - (hover.s.far ?? 0) || 1)).toFixed(2)}</b></>
-          : <>Solid curves: CSI. Dashed lines: frequency bias. Numbers beside the delivered-forecast points are thresholds (mm). Hover or tap a marker for its scores.</>}
+          : <>Solid curves: CSI. Dashed lines: frequency bias. The selected threshold is labelled on the delivered forecast. Hover, tap or focus a marker for its scores.</>}
       </p>
     </div>
   );
